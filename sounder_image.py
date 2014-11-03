@@ -332,7 +332,7 @@ def hrpt_sounder(hrpt_file,pres_0=850.):
     for label in ['temp','dwpt','wvap','lat','lon']:
         if sounding_inputs[label] != None:
             LOG.debug(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
-            LOG.debug(sounding_inputs[label]['data'])
+            LOG.debug('{} -->sounding_inputs[label]['data'])
             fill_value = sounding_inputs[label]['_FillValue']
             #data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
             data = ma.masked_equal(sounding_inputs[label]['data'],np.nan)
