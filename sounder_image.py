@@ -332,7 +332,7 @@ def hrpt_sounder(hrpt_file,pres_0=850.):
     for label in ['temp','dwpt','wvap','lat','lon']:
         if sounding_inputs[label] != None:
             LOG.debug(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
-            LOG.debug('{} -->sounding_inputs[label]['data'])
+            #LOG.debug('{} --> sounding_inputs[label]['data'])
             fill_value = sounding_inputs[label]['_FillValue']
             #data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
             data = ma.masked_equal(sounding_inputs[label]['data'],np.nan)
@@ -822,6 +822,7 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
 
     ax = fig.add_axes(ax_rect)
 
+    LOG.info("scale = {}".format(scale))
     windowWidth = scale *(0.35*12000000.)
     windowHeight = scale *(0.50*9000000.)
     m = Basemap(projection='lcc',lon_0=lon_0,lat_0=lat_0,
@@ -845,6 +846,11 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
 
     data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
 
+    plotMin = np.min(data) if plotMin==None else plotMin
+    plotMax = np.max(data) if plotMax==None else plotMax
+    LOG.debug("plotMin = {}".format(plotMin))
+    LOG.debug("plotMax = {}".format(plotMax))
+
     if doScatterPlot:
         cs = m.scatter(x,y,s=pointSize,c=data,axes=ax,edgecolors='none',
                 vmin=plotMin,vmax=plotMax)
@@ -853,12 +859,6 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
                 vmin=plotMin,vmax=plotMax)
 
     txt = ax.set_title(title,fontsize=11)
-    #if units == '%':
-        #txt = ax.set_title('Reflectance')
-    #elif units == 'K':
-        #txt = ax.set_title('Brightness Temperature')
-    #else:
-        #txt = ax.set_title('scaled data')
 
     ppl.setp(ax.get_xticklines(),visible=False)
     ppl.setp(ax.get_yticklines(),visible=False)
@@ -872,6 +872,32 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
     cb = fig.colorbar(cs, cax=cax, orientation='horizontal')
 
     txt = cax.set_title(cbar_title)
+
+    #
+    # Add a small globe with the swath indicated on it #
+    #
+
+    # Create main axes instance, leaving room for colorbar at bottom,
+    # and also get the Bbox of the axes instance
+    glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
+    glax = fig.add_axes(glax_rect)
+
+    m_globe = Basemap(lat_0=0.,lon_0=0.,\
+        ax=glax,resolution='c',area_thresh=10000.,projection='robin')
+
+    # If we previously had a zero size data array, increase the pointSize
+    # so the data points are visible on the global plot
+    if (np.shape(lon[::stride,::stride])[0]==2) :
+        pointSize = 5.
+
+    x,y=m_globe(lon[::stride,::stride],lat[::stride,::stride])
+    swath = np.zeros(np.shape(x),dtype=int)
+
+    m_globe.drawmapboundary(linewidth=0.1)
+    m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
+    m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
+
+    p_globe = m_globe.scatter(x,y,s=pointSize,c="red",axes=glax,edgecolors='none',zorder=2)
 
     # Redraw the figure
     canvas.draw()
@@ -898,12 +924,14 @@ def _argparse():
                 'pressure':850.,
                 'lat_0':None,
                 'lat_0':None,
+                'plotMin'  : None,
+                'plotMax'  : None,
                 'scatter_plot':False,
                 'pointSize':1,
                 'scale':1,
                 'map_res':'c',
-                'map_plot':False,
                 'output_file':None,
+                'outputFilePrefix' : None,
                 'dpi':200
                 }
 
@@ -956,15 +984,6 @@ def _argparse():
                            '''.format(prodChoices.__str__()[1:-1])
                       )
 
-    parser.add_argument('--map_plot',
-                      action="store_true",
-                      dest="doMapPlots",
-                      default=defaults["map_plot"],
-                      help='''Plot the band arrays to png files, using a map 
-                      projection (has no effect if --make_plots is not set). 
-                      [default: {}]'''.format(defaults["map_plot"])
-                      )
-
     parser.add_argument('-S','--stride',
                       action="store",
                       dest="stride",
@@ -986,15 +1005,17 @@ def _argparse():
     parser.add_argument('--plotMin',
                       action="store",
                       dest="plotMin",
+                      default=defaults["plotMin"],
                       type=float,
-                      help="Minimum value to plot."
+                      help="Minimum value to plot.".format(defaults["plotMin"])
                       )
 
     parser.add_argument('--plotMax',
                       action="store",
                       dest="plotMax",
+                      default=defaults["plotMax"],
                       type=float,
-                      help="Maximum value to plot."
+                      help="Maximum value to plot.".format(defaults["plotMax"])
                       )
 
     parser.add_argument('-d','--dpi',
@@ -1089,10 +1110,21 @@ def _argparse():
     parser.add_argument('-o','--output_file',
                       action="store",
                       dest="output_file",
-                      #default=defaults["output_file"],
+                      default=defaults["output_file"],
                       type=str,
                       help='''The filename of the output png file. 
                       '''
+                      )
+
+    parser.add_argument('-O','--output_file_prefix',
+                      action="store",
+                      dest="outputFilePrefix",
+                      default=defaults["outputFilePrefix"],
+                      type=str,
+                      help="""String to prefix to the automatically generated 
+                      png names, which are of the form 
+                      <N_Collection_Short_Name>_<N_Granule_ID>.png. 
+                      [default: {}]""".format(defaults["outputFilePrefix"])
                       )
 
     parser.add_argument("-z", "--verbose",
@@ -1144,6 +1176,7 @@ def main():
     pointSize = options.pointSize
     map_res = options.map_res
     output_file  = options.output_file
+    outputFilePrefix  = options.outputFilePrefix
     dpi = options.dpi
 
     
@@ -1169,10 +1202,7 @@ def main():
     data_mask = sounding_inputs[dataset]['mask']
     units = sounding_inputs[dataset]['units']
 
-    if output_file == None:
-        pres_0 = int(sounding_inputs['pres_0'])
-        output_file = "{}_{}_{}mb.png".format(datatype,dataset,pres_0)
-        LOG.info("output_file = {}".format(output_file))
+    pres_0 = int(sounding_inputs['pres_0'])
 
     input_file = path.basename(input_file)
 
@@ -1181,6 +1211,18 @@ def main():
             'dwpt':'dewpoint temperature (K) @ {:4.2f} hPa'.format(pres_0),
             'relh':'relative humidity (%) @ {:4.2f} hPa'.format(pres_0)
             }
+
+    # Determine the filename
+    file_suffix = "{}_{}_{}mb".format(datatype,dataset,pres_0)
+
+    if output_file==None and outputFilePrefix==None :
+        output_file = "{}.{}.png".format(input_file,file_suffix)
+    if output_file!=None and outputFilePrefix==None :
+        pass
+    if output_file==None and outputFilePrefix!=None :
+        output_file = "{}_{}.png".format(outputFilePrefix,file_suffix)
+    if output_file!=None and outputFilePrefix!=None :
+        output_file = "{}_{}.png".format(outputFilePrefix,file_suffix)
 
     # Default plot labels
     plot_options = {}
