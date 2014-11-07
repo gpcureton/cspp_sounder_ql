@@ -1194,8 +1194,6 @@ def main():
     else:
         pass
 
-    #sys.exit(0)
-
     lats = sounding_inputs['lat']['data']
     lons = sounding_inputs['lon']['data']
     data = sounding_inputs[dataset]['data']

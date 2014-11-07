@@ -733,6 +733,7 @@ def _argparse():
                 'lat_0':None,
                 'lat_0':None,
                 'output_file':None,
+                'outputFilePrefix' : None,
                 'dpi':200
                 }
 
@@ -819,6 +820,17 @@ def _argparse():
                       [default: {}]'''.format(defaults["output_file"])
                       )
 
+    parser.add_argument('-O','--output_file_prefix',
+                      action="store",
+                      dest="outputFilePrefix",
+                      default=defaults["outputFilePrefix"],
+                      type=str,
+                      help="""String to prefix to the automatically generated 
+                      png names, which are of the form 
+                      <N_Collection_Short_Name>_<N_Granule_ID>.png. 
+                      [default: {}]""".format(defaults["outputFilePrefix"])
+                      )
+
     parser.add_argument("-z", "--verbose",
                       dest='verbosity',
                       action="count", 
@@ -856,6 +868,7 @@ def main():
     lat_0  = options.lat_0
     lon_0  = options.lon_0
     output_file  = options.output_file
+    outputFilePrefix  = options.outputFilePrefix
     dpi = options.dpi
 
     # Read in the input file, and return a doctionary containing the required
@@ -872,8 +885,18 @@ def main():
     else:
         pass
 
-    if output_file == None:
-        output_file = "SkewT_{}.png".format(datatype)
+    # Determine the filename
+    file_suffix = "{}_SkewT".format(datatype)
+
+    if output_file==None and outputFilePrefix==None :
+        output_file = "{}.{}.png".format(input_file,file_suffix)
+    if output_file!=None and outputFilePrefix==None :
+        pass
+    if output_file==None and outputFilePrefix!=None :
+        output_file = "{}_{}.png".format(outputFilePrefix,file_suffix)
+    if output_file!=None and outputFilePrefix!=None :
+        output_file = "{}_{}.png".format(outputFilePrefix,file_suffix)
+
 
     lat = sounding_inputs['lat_0']
     lon = sounding_inputs['lon_0']
@@ -888,17 +911,11 @@ def main():
     plot_options['T_legend'] = 'temperature'
     plot_options['Td_legend'] = 'dew point temperature'
 
-    # Cyrillic plot labels
-    #plot_options['paxis_label'] = u'нажатие (mbar)'
-    #plot_options['taxis_label'] = u'температура ($^{\circ}\mathrm{C}$)'
-    #plot_options['T_legend'] = u'температура'
-    #plot_options['Td_legend'] = u'роса балл температура'
-
     # Create the plot
     LOG.info("Creating the skew-T plot {}".format(output_file))
     plot_dict(sounding_inputs,png_name=output_file,**plot_options)
 
-    sys.exit(0)
+    return 0
 
 
 if __name__=='__main__':
