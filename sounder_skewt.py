@@ -910,6 +910,7 @@ def main():
     plot_options['taxis_label'] = 'Temperature ($^{\circ}\mathrm{C}$)'
     plot_options['T_legend'] = 'temperature'
     plot_options['Td_legend'] = 'dew point temperature'
+    plot_options['dpi'] = dpi
 
     # Create the plot
     LOG.info("Creating the skew-T plot {}".format(output_file))
