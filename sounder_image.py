@@ -363,7 +363,7 @@ def hrpt_sounder(hrpt_file,pres_0=850.):
     pressure_array = ma.array(pressure_array,mask=relh_mask)
 
     mr_to_rh_vec = np.vectorize(mr_to_rh)
-    rh = mr_to_rh_vec(wvap,pressure_array,temp)
+    rh = mr_to_rh_vec(wvap,pressure_array,temp).real
 
     sounding_inputs['relh']['data'] = rh
     sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
@@ -372,7 +372,7 @@ def hrpt_sounder(hrpt_file,pres_0=850.):
     sounding_inputs['relh']['long_name'] = 'Relative Humidity'
 
     LOG.debug("ma.is_masked({}) = {}".format('relh',ma.is_masked(rh)))
-    LOG.debug("There are {} masked values in relh".format(np.sum(rh.mask)))
+    LOG.debug("There are {}/{} masked values in relh".format(np.sum(rh.mask),rh.size))
 
     return sounding_inputs
 
@@ -530,7 +530,8 @@ def mirs_sounder(mirs_file,pres_0=850.):
     pressure_array = ma.array(pressure_array,mask=relh_mask)
 
     mr_to_rh_vec = np.vectorize(mr_to_rh)
-    rh = mr_to_rh_vec(wvap,pressure_array,temp)
+    rh = mr_to_rh_vec(wvap,pressure_array,temp).real
+
     sounding_inputs['relh']['data'] = rh
     sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
             else np.zeros(rh.shape,dtype='bool')
@@ -538,7 +539,7 @@ def mirs_sounder(mirs_file,pres_0=850.):
     sounding_inputs['relh']['long_name'] = 'Relative Humidity'
 
     LOG.debug("ma.is_masked({}) = {}".format('relh',ma.is_masked(rh)))
-    LOG.debug("There are {} masked values in relh".format(np.sum(rh.mask)))
+    LOG.debug("There are {}/{} masked values in relh".format(np.sum(rh.mask),rh.size))
 
     # Computing the dewpoint temperature
     sounding_inputs['dwpt'] = {}
