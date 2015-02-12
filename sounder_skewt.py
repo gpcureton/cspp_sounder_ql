@@ -42,14 +42,14 @@ Copyright (c) 2014 University of Wisconsin Regents. All rights reserved.
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-file_Date = '$Date$'
-file_Revision = '$Revision$'
-file_Author = '$Author$'
-file_HeadURL = '$HeadURL$'
-file_Id = '$Id$'
+file_Date = '$Date: 2015-02-11 22:59:24 -0800 (Wed, 11 Feb 2015) $'
+file_Revision = '$Revision: 2354 $'
+file_Author = '$Author: geoffc $'
+file_HeadURL = '$HeadURL: https://svn.ssec.wisc.edu/repos/jpss_adl/trunk/scripts/iapp/quicklooks/sounder_skewt.py $'
+file_Id = '$Id: sounder_skewt.py 2354 2015-02-12 06:59:24Z geoffc $'
 
 __author__ = 'Geoff Cureton <geoff.cureton@ssec.wisc.edu>'
-__version__ = '$Id$'
+__version__ = '$Id: sounder_skewt.py 2354 2015-02-12 06:59:24Z geoffc $'
 __docformat__ = 'Epytext'
 
 import os, sys, logging, traceback
@@ -747,28 +747,27 @@ def _argparse():
                                      description=description
                                      )
 
-    # Mandatory arguments
-
-    parser.add_argument('-i','--input_file',
+    # Mandatory/positional arguments
+    
+    parser.add_argument(
                       action='store',
                       dest='input_file',
                       type=str,
-                      required=True,
-                      help="The fully qualified path to the input file."
+                      help='''The fully qualified path to a single level-1d input file.'''
                       )
 
-    parser.add_argument('-t','--datatype',
+    parser.add_argument(
                       action="store",
                       dest="datatype",
                       default=defaults["datatype"],
                       type=str,
-                      required=True,
                       choices=dataChoices,
                       help='''The type of the input sounder data file.\n\n
                               Possible values are...
                               {}.
                            '''.format(dataChoices.__str__()[1:-1])
                       )
+
     # Optional arguments 
 
     parser.add_argument('--temp_min',
