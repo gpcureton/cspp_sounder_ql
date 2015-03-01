@@ -1,0 +1,5 @@
+# Compiled python modules.
+*.pyc
+
+# VIM swap files
+.*.sw*
