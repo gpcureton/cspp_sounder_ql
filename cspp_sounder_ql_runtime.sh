@@ -5,47 +5,47 @@
 # Copyright 2011-2013, University of Wisconsin Regents.
 # Licensed under the GNU GPLv3.
 
-test -n "$CSPP_IAPP_HOME" || echo "CSPP_IAPP_HOME is not set. Please set this environment variable to the install location of CSPP software packages."
+test -n "$CSPP_SOUNDER_QL_HOME" || echo "CSPP_IAPP_HOME is not set. Please set this environment variable to the install location of CSPP software packages."
 
 
 # the adl-common.py module will assign defaults
 # these variables should only be set for custom installations
 
-if [ ! -z "${CSPP_RT_ANC_CACHE_DIR}" ];
-then
-    echo "Warning overridden default: CSPP_RT_ANC_CACHE_DIR="${CSPP_RT_ANC_CACHE_DIR}
-fi
+#if [ ! -z "${CSPP_RT_ANC_CACHE_DIR}" ];
+#then
+    #echo "Warning overridden default: CSPP_RT_ANC_CACHE_DIR="${CSPP_RT_ANC_CACHE_DIR}
+#fi
 
-if [ ! -z "${CSPP_RT_ANC_PATH}" ];
-then
-    echo "Warning overridden default: CSPP_RT_ANC_PATH="${CSPP_RT_ANC_PATH}
-fi
+#if [ ! -z "${CSPP_RT_ANC_PATH}" ];
+#then
+    #echo "Warning overridden default: CSPP_RT_ANC_PATH="${CSPP_RT_ANC_PATH}
+#fi
 
-if [ ! -z "${CSPP_RT_ANC_HOME}" ];
-then
-    echo "Warning overridden default: CSPP_RT_ANC_HOME="${CSPP_RT_ANC_HOME}
+#if [ ! -z "${CSPP_RT_ANC_HOME}" ];
+#then
+    #echo "Warning overridden default: CSPP_RT_ANC_HOME="${CSPP_RT_ANC_HOME}
 
-fi
+#fi
 
-if [ ! -z "${CSPP_RT_ANC_TILE_PATH}" ];
-then
-    echo "Warning overridden default: CSPP_RT_ANC_TILE_PATH="${CSPP_RT_ANC_TILE_PATH}
+#if [ ! -z "${CSPP_RT_ANC_TILE_PATH}" ];
+#then
+    #echo "Warning overridden default: CSPP_RT_ANC_TILE_PATH="${CSPP_RT_ANC_TILE_PATH}
 
-fi
+#fi
 
-if [ ! -z "${CSPP_RT_ANC_HOME}" ];
-then
-    echo "Warning overridden default: CSPP_RT_ANC_HOME="${CSPP_RT_ANC_HOME}
+#if [ ! -z "${CSPP_RT_ANC_HOME}" ];
+#then
+    #echo "Warning overridden default: CSPP_RT_ANC_HOME="${CSPP_RT_ANC_HOME}
 
-fi
+#fi
 
-if [ ! -z "${CSPP_RT_HOME}" ];
-then
-    echo "Warning overridden default: CSPP_RT_HOME="${CSPP_RT_HOME}
+#if [ ! -z "${CSPP_RT_HOME}" ];
+#then
+    #echo "Warning overridden default: CSPP_RT_HOME="${CSPP_RT_HOME}
 
-fi
+#fi
 
-export DCONFIG=${CSPP_IAPP_HOME}/common/cspp_cfg/cfg
+export DCONFIG=${CSPP_SOUNDER_QL_HOME}/common/cspp_cfg/cfg
 
 
 if [ ! -z "${DCONFIG}" ];
@@ -54,15 +54,15 @@ then
 
 fi
 
-export JPSS_REMOTE_ANC_DIR='ftp://ftp.ssec.wisc.edu/pub/eosdb/ancillary'
+#export JPSS_REMOTE_ANC_DIR='ftp://ftp.ssec.wisc.edu/pub/eosdb/ancillary'
 
-if [ ! -z "${JPSS_REMOTE_ANC_DIR}" ];
-then
-     echo "Warning overridden default: JPSS_REMOTE_ANC_DIR="${JPSS_REMOTE_ANC_DIR}
-fi
+#if [ ! -z "${JPSS_REMOTE_ANC_DIR}" ];
+#then
+     #echo "Warning overridden default: JPSS_REMOTE_ANC_DIR="${JPSS_REMOTE_ANC_DIR}
+#fi
 
 
-export DPE_VER=CSPP_IAPP_1_0
+export DPE_VER=CSPP_SOUNDER_QL_1_0
 
 #
 # derived CSPP default locations (site installs may move these under some circumstances)
@@ -74,15 +74,15 @@ export DPE_VER=CSPP_IAPP_1_0
 #
 
 # python interpreter including numpy, h5py, pytables, scipy; used by CSPP scripts
-export PY=${CSPP_IAPP_HOME}/common/ShellB3/bin/python
+export PY=${CSPP_SOUNDER_QL_HOME}/common/ShellB3/bin/python
 
 # common modules location used by CSPP scripts
-export PYTHONPATH=$CSPP_IAPP_HOME/common:${CSPP_IAPP_HOME}/iapp
+export PYTHONPATH=$CSPP_SOUNDER_QL_HOME/common:${CSPP_SOUNDER_QL_HOME}/sounder_ql
 
 #environment cleanups
 unset LD_PRELOAD
 
-test -x "$PY" || echo "Python interpreter not available; please source cspp_env.sh"
+test -x "$PY" || echo "Python interpreter not available; please source cspp_sounder_ql_env.sh"
 
 # Linux execution configuration
 export OSTYPE=`uname`
@@ -99,7 +99,8 @@ ulimit -d unlimited
 
 # insurance
 
-#export LD_LIBRARY_PATH=${CSPP_IAPP_HOME}/common/IAPP_VENDOR/:${CSPP_IAPP_HOME}/common/local/lib64:${CSPP_IAPP_HOME}/common/local/lib
-export LD_LIBRARY_PATH=${CSPP_IAPP_HOME}/common/IAPP_VENDOR
+#export LD_LIBRARY_PATH=${CSPP_SOUNDER_QL_HOME}/common/local/lib64:${CSPP_SOUNDER_QL_HOME}/common/local/lib
+#export LD_LIBRARY_PATH=${CSPP_SOUNDER_QL_HOME}/common/IAPP_VENDOR/:${CSPP_SOUNDER_QL_HOME}/common/local/lib64:${CSPP_IAPP_HOME}/common/local/lib
+#export LD_LIBRARY_PATH=${CSPP_SOUNDER_QL_HOME}/common/IAPP_VENDOR
 
 

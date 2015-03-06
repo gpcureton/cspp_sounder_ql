@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # encoding: utf-8
 """
-sounder_skewt.py
+sounder_profile.py
 
-Purpose: Create a Skew-T plot from a range of input data. Supports outputs from 
+Purpose: Create a profile plot from a range of input data. Supports outputs from 
          the following packages...
          
          * International ATOVS Processing Package (IAPP)
@@ -21,7 +21,7 @@ Optional:
 
 Minimum commandline:
 
-    python sounder_skewt.py INPUTFILE DATATYPE
+    python sounder_profile.py INPUTFILE DATATYPE PRODUCT
 
 where...
 
@@ -29,6 +29,8 @@ where...
     directory or a file glob.
 
     DATATYPE: One of 'IAPP','MIRS', 'DR' or 'NUCAPS'.
+
+    PRODUCT: One of 'temp','dwpt','wvap','relh',
 
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2014-05-10.
@@ -392,6 +394,10 @@ def mirs_sounder(mirs_file,lat_0=None,lon_0=None):
     float PVapor(Scanline, Field_of_view, P_Layer) ;
             PVapor:long_name = "Water vapor profile in g/kg" ;
             PVapor:scale = 1. ;
+
+    float PClw(Scanline, Field_of_view, P_Layer) ;
+            PClw:long_name = "Cloud liquid water profile in g/kg" ;
+            PClw:scale = 1. ;            
     '''         
 
     data_labels = [
@@ -523,14 +529,16 @@ def mirs_sounder(mirs_file,lat_0=None,lon_0=None):
 def dual_regression_sounder(dr_file,lat_0=None,lon_0=None):
     '''
     Plevs: Pressure for each level in mb (hPa)
-    TAir: Temperature profile in K
-    Dewpnt: Water vapor profile (mixing ratio) in g/kg
+    TAir: Retrieved temperature profile at 101 levels (K)
+    Dewpnt: Dew point temperature profile at 101 levels (K)
+    H2OMMR : Retrieved humidity (water vapor mixing ratio) profile at 101 levels (g/kg)
 
     /Latitude
     /Longitude
     /Plevs
     /TAir
     /Dewpnt
+    /H2OMMR
     '''
 
     data_labels = [

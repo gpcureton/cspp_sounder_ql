@@ -1,5 +1,5 @@
 #!/bin/bash
-# $Id: ql_iapp_level2_image.sh 2354 2015-02-12 06:59:24Z geoffc $
+# $Id: ql_level2_image.sh 2354 2015-02-12 06:59:24Z geoffc $
 #
 # Wrapper script for sounder_image.py, which generates 
 # navigated image plots from IAPP level-2 files.
@@ -16,15 +16,15 @@
 # file_HeadURL = '$HeadURL: https://svn.ssec.wisc.edu/repos/jpss_adl/trunk/scripts/iapp/quicklooks/ql_iapp_level2_image.sh $'
 # file_Id = '$Id: ql_iapp_level2_image.sh 2354 2015-02-12 06:59:24Z geoffc $'
 
-if [ -z "$CSPP_IAPP_HOME" ]; then
-    echo "CSPP_IAPP_HOME is not set, but is required for this script to operate."
+if [ -z "$CSPP_SOUNDER_QL_HOME" ]; then
+    echo "CSPP_SOUNDER_QL_HOME is not set, but is required for this script to operate."
     exit 9
 fi
 
-. ${CSPP_IAPP_HOME}/cspp_iapp_runtime.sh
+. ${CSPP_SOUNDER_QL_HOME}/cspp_sounder_ql_runtime.sh
 
 usage() {
-    $PY $CSPP_IAPP_HOME/iapp/quicklooks/sounder_image.py --help
+    $PY $CSPP_SOUNDER_QL_HOME/sounder_ql/sounder_image.py --help
 }
 
 if [ -z "$1" ]; then
@@ -32,5 +32,5 @@ if [ -z "$1" ]; then
     exit 3
 fi
 
-$PY $CSPP_IAPP_HOME/iapp/quicklooks/sounder_image.py  -zz "$@"
+$PY $CSPP_SOUNDER_QL_HOME/sounder_ql/sounder_image.py  -zz "$@"
 

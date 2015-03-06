@@ -3,7 +3,13 @@
 """
 sounder_skewt.py
 
-Purpose: Create a Skew-T plot from a range of input data.
+Purpose: Create a Skew-T plot from a range of input data. Supports outputs from 
+         the following packages...
+         
+         * International ATOVS Processing Package (IAPP)
+         * Microwave Integrated Retrieval System (MIRS)
+         * CSPP Hyperspectral Retrieval (Dual Regression) Package
+         * NOAA Unique CrIS/ATMS Product System (NUCAPS)
 
 Preconditions:
     * matplotlib (with basemap)
@@ -15,14 +21,14 @@ Optional:
 
 Minimum commandline:
 
-    python sounder_skewt.py  --input_files=INPUTFILES --datatype=DATATYPE
+    python sounder_skewt.py INPUTFILE DATATYPE
 
 where...
 
     INPUTFILES: The fully qualified path to the input files. May be a 
     directory or a file glob.
 
-    DATATYPE: One of 'HRPT','MIRS' or 'DR'.
+    DATATYPE: One of 'IAPP','MIRS', 'DR' or 'NUCAPS'.
 
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2014-05-10.
@@ -209,7 +215,7 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
     return row,col
 
 
-def hrpt_sounder(hrpt_file,lat_0=None,lon_0=None):
+def iapp_sounder(iapp_file,lat_0=None,lon_0=None):
     '''
     Pressure_Levels: Pressure for each level in mb (hPa)
     Temperature_Retrieval: Temperature profile in K
@@ -276,7 +282,7 @@ def hrpt_sounder(hrpt_file,lat_0=None,lon_0=None):
 
 
     # Open the file object
-    fileObj = Dataset(hrpt_file)
+    fileObj = Dataset(iapp_file)
 
     try:
 
@@ -313,11 +319,11 @@ def hrpt_sounder(hrpt_file,lat_0=None,lon_0=None):
         sounding_inputs['dwpt']['data'] = sounding_inputs['dwpt']['node'][row,col,:]
         sounding_inputs['wvap']['data'] = sounding_inputs['wvap']['node'][row,col,:]
 
-        LOG.info("Closing {}".format(hrpt_file))
+        LOG.info("Closing {}".format(iapp_file))
         fileObj.close()
 
     except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(hrpt_file))
+        LOG.warn("There was a problem, closing {}".format(iapp_file))
         LOG.warn("{}".format(err))
         LOG.debug(traceback.format_exc())
         fileObj.close()
@@ -358,29 +364,6 @@ def hrpt_sounder(hrpt_file,lat_0=None,lon_0=None):
     sounding_inputs['relh']['data'] = rh
     sounding_inputs['relh']['units'] = '%'
     sounding_inputs['relh']['long_name'] = 'Relative Humidity'
-
-    # Computing the water vapor pressure in Pa
-    #sounding_inputs['ewat'] = {}
-    #MixR2VaporPress_vec = np.vectorize(MixR2VaporPress)
-    #vapor_pressure_water = MixR2VaporPress_vec(
-            #sounding_inputs['wvap']['data'] * 0.001,
-            #sounding_inputs['pres']['data'] * 100.
-            #)
-    #sounding_inputs['ewat']['data'] = vapor_pressure_water
-    #sounding_inputs['ewat']['units'] = 'Pa'
-    #sounding_inputs['ewat']['long_name'] = 'Water vapor pressure in Pa'
-    
-    # Computing the dew point temperature in K
-    #sounding_inputs['dwpt_new'] = {}
-    #dewpoint_AB_vec = np.vectorize(dewpoint_AB)
-    #dwpt_new = dewpoint_AB_vec(
-            #sounding_inputs['temp']['data'],
-            #sounding_inputs['relh']['data']
-            #) + 273.15
-
-    #sounding_inputs['dwpt_new']['data'] = dwpt_new
-    #sounding_inputs['dwpt_new']['units'] = 'K'
-    #sounding_inputs['dwpt_new']['long_name'] = 'Dew-point Temperature profile in K'
 
     return sounding_inputs
 
@@ -474,6 +457,7 @@ def mirs_sounder(mirs_file,lat_0=None,lon_0=None):
         #row,col = 10,10
 
         sounding_inputs['pres']['data'] = sounding_inputs['pres']['node'][:]
+
         sounding_inputs['temp']['data'] = sounding_inputs['temp']['node'][row,col,:]
         sounding_inputs['wvap']['data'] = sounding_inputs['wvap']['node'][row,col,:]
 
@@ -493,6 +477,313 @@ def mirs_sounder(mirs_file,lat_0=None,lon_0=None):
         if sounding_inputs[label] != None:
             LOG.debug(">>> Processing {} ..."
                     .format(sounding_inputs[label]['dset_name']))
+            data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
+            LOG.debug("ma.is_masked({}) = {}".format(label,ma.is_masked(data)))
+
+            if ma.is_masked(data):
+                if data.mask.shape == ():
+                    data_mask = np.ones(data.shape,dtype='bool')
+                else:
+                    data_mask = data.mask
+            else: 
+                data_mask = np.zeros(data.shape,dtype='bool')
+
+            LOG.debug("There are {}/{} masked values in {}".\
+                    format(np.sum(data_mask),data.size,label))
+
+            sounding_inputs[label]['mask'] = data_mask
+            sounding_inputs[label]['data'] = ma.array(data,mask=data_mask)
+
+    # Computing the relative humidity
+    sounding_inputs['relh'] = {}
+    mr_to_rh_vec = np.vectorize(mr_to_rh)
+    rh = mr_to_rh_vec(
+            sounding_inputs['wvap']['data'],
+            sounding_inputs['pres']['data'],
+            sounding_inputs['temp']['data']
+            )
+    sounding_inputs['relh']['data'] = rh
+    sounding_inputs['relh']['units'] = '%'
+    sounding_inputs['relh']['long_name'] = 'Relative Humidity'
+
+    dewpoint_AB_vec = np.vectorize(dewpoint_AB)
+    sounding_inputs['dwpt'] = {}
+    dwpt = dewpoint_AB_vec(
+            sounding_inputs['temp']['data'],
+            sounding_inputs['relh']['data']
+            ) + 273.15
+
+    sounding_inputs['dwpt']['data'] = dwpt
+    sounding_inputs['dwpt']['units'] = 'K'
+    sounding_inputs['dwpt']['long_name'] = 'Dew-point Temperature profile in K'
+
+    return sounding_inputs
+
+
+def dual_regression_sounder(dr_file,lat_0=None,lon_0=None):
+    '''
+    Plevs: Pressure for each level in mb (hPa)
+    TAir: Retrieved temperature profile at 101 levels (K)
+    H2OMMR : Retrieved humidity (water vapor mixing ratio) profile at 101 levels (g/kg)
+    Dewpnt: Dew point temperature profile at 101 levels (K)
+
+    /Latitude
+    /Longitude
+    /Plevs
+    /TAir
+    /H2OMMR
+    /Dewpnt
+    '''
+
+    data_labels = [
+                    'pres',
+                    'temp',
+                    'dwpt',
+                    'wvap',
+                    'relh',
+                    'lat',
+                    'lon'
+                    ]
+
+    sounding_inputs = {}
+    for label in data_labels:
+        sounding_inputs[label] = {}
+
+    sounding_inputs['pres']['dset_name'] = 'Plevs'
+    sounding_inputs['temp']['dset_name'] = 'TAir'
+    sounding_inputs['dwpt']['dset_name'] = 'Dewpnt'
+    sounding_inputs['wvap']['dset_name'] = 'H2OMMR'
+    sounding_inputs['relh']['dset_name'] = 'RelHum'
+    sounding_inputs['lat']['dset_name']  = 'Latitude'
+    sounding_inputs['lon']['dset_name']  = 'Longitude'
+
+
+    # Open the file object
+    if h5py.is_hdf5(dr_file):
+        fileObj = h5py.File(dr_file,'r')
+    else:
+        LOG.error("{} does not exist or is not a valid HDF5 file, aborting...".\
+                format(dr_file))
+        sys.exit(1)
+
+    try:
+
+        sounding_inputs['pres']['node'] = fileObj['Plevs']
+        sounding_inputs['temp']['node'] = fileObj['TAir']
+        sounding_inputs['dwpt']['node'] = fileObj['Dewpnt']
+        sounding_inputs['wvap']['node'] = fileObj['H2OMMR']
+        sounding_inputs['relh']['node'] = fileObj['RelHum']
+        sounding_inputs['lat']['node'] = fileObj['Latitude']
+        sounding_inputs['lon']['node'] = fileObj['Longitude']
+
+        lat = sounding_inputs['lat']['node'][:,:]
+        lon = sounding_inputs['lon']['node'][:,:]
+
+        #FIXME: All attributes for the DR datasets appear to be strings, 
+        #       whether the attribute value is a string or not. So we can't 
+        #       determine the attribute type from the file, we just have 
+        #       *know* it. Why bother with self-descibing file formats then?
+        for label in data_labels:
+            if sounding_inputs[label] != None:
+                LOG.info(">>> Processing {} ...".\
+                        format(sounding_inputs[label]['dset_name']))
+                for attr_name in sounding_inputs[label]['node'].attrs.keys(): 
+                    attr = sounding_inputs[label]['node'].attrs[attr_name]
+                    LOG.debug("{} = {}".format(attr_name,np.squeeze(attr)))
+                    sounding_inputs[label][attr_name] = attr
+
+        row,col = get_geo_indices(lat,lon,lat_0=lat_0,lon_0=lon_0)
+
+        if row==None or col==None:
+            raise Exception("No suitable lat/lon coordinates found, aborting...")
+             
+        LOG.debug("Retrieved row,col = {},{}".format(row,col))
+        sounding_inputs['lat_0'] = lat[row,col]
+        sounding_inputs['lon_0'] = lon[row,col]
+        #row,col = 10,10
+
+        sounding_inputs['pres']['data'] = sounding_inputs['pres']['node'][:]
+        sounding_inputs['temp']['data'] = sounding_inputs['temp']['node'][:,row,col]
+        sounding_inputs['dwpt']['data'] = sounding_inputs['dwpt']['node'][:,row,col]
+        sounding_inputs['wvap']['data'] = sounding_inputs['wvap']['node'][:,row,col]
+        sounding_inputs['relh']['data'] = sounding_inputs['relh']['node'][:,row,col]
+
+        LOG.info("Closing {}".format(dr_file))
+        fileObj.close()
+
+    except Exception, err :
+        LOG.warn("There was a problem, closing {}".format(dr_file))
+        LOG.warn("{}".format(err))
+        LOG.debug(traceback.format_exc())
+        fileObj.close()
+        LOG.info("Exiting...")
+        sys.exit(1)
+
+    # Construct the masks of the various datasets, and mask the data accordingly
+    for label in ['temp','dwpt','wvap','relh']:
+        if sounding_inputs[label] != None:
+            LOG.debug(">>> Processing {} ..."
+                    .format(sounding_inputs[label]['dset_name']))
+            fill_value = float(sounding_inputs[label]['missing_value'][0])
+            LOG.debug("fill_value = {}".format(fill_value))
+            data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
+            LOG.debug("ma.is_masked({}) = {}".format(label,ma.is_masked(data)))
+
+            if ma.is_masked(data):
+                if data.mask.shape == ():
+                    data_mask = np.ones(data.shape,dtype='bool')
+                else:
+                    data_mask = data.mask
+            else: 
+                data_mask = np.zeros(data.shape,dtype='bool')
+
+            LOG.debug("There are {}/{} masked values in {}".\
+                    format(np.sum(data_mask),data.size,label))
+
+            sounding_inputs[label]['mask'] = data_mask
+            sounding_inputs[label]['data'] = ma.array(data,mask=data_mask)
+
+
+    return sounding_inputs
+
+
+def nucaps_sounder(nucaps_file,lat_0=None,lon_0=None):
+    '''
+    Pressure: Pressure for each layer in mb (hPa)
+    Temperature: Temperature profile in K
+    H2O_MR: Water vapor profile (mixing ratio) in g/g
+    '''
+
+    '''
+    float Latitude(Number_of_CrIS_FORs) ;
+            Latitude:long_name = "Retrieval latitude values for each CrIS FOR" ;
+            Latitude:standard_name = "latitude" ;
+            Latitude:units = "degrees_north" ;
+            Latitude:parameter_type = "NUCAPS data" ;
+            Latitude:valid_range = -90.f, 90.f ;
+            Latitude:_FillValue = -9999.f ;
+
+    float Longitude(Number_of_CrIS_FORs) ;
+            Longitude:long_name = "Retrieval longitude values for each CrIS FOR" ;
+            Longitude:standard_name = "longitude" ;
+            Longitude:units = "degrees_east" ;
+            Longitude:parameter_type = "NUCAPS data" ;
+            Longitude:valid_range = -180.f, 180.f ;
+            Longitude:_FillValue = -9999.f ;
+
+    float Pressure(Number_of_CrIS_FORs, Number_of_P_Levels) ;
+            Pressure:long_name = "Pressure" ;
+            Pressure:units = "mb" ;
+            Pressure:parameter_type = "NUCAPS data" ;
+            Pressure:coordinates = "Time Latitude Longitude" ;
+            Pressure:valid_range = 0.f, 2000.f ;
+            Pressure:_FillValue = -9999.f ;
+
+    float Temperature(Number_of_CrIS_FORs, Number_of_P_Levels) ;
+            Temperature:long_name = "Temperature" ;
+            Temperature:standard_name = "air_temperature" ;
+            Temperature:units = "Kelvin" ;
+            Temperature:parameter_type = "NUCAPS data" ;
+            Temperature:coordinates = "Time Latitude Longitude Pressure" ;
+            Temperature:valid_range = 0.f, 1000.f ;
+            Temperature:_FillValue = -9999.f ;
+
+    float H2O_MR(Number_of_CrIS_FORs, Number_of_P_Levels) ;
+            H2O_MR:long_name = "water vapor mixing ratio" ;
+            H2O_MR:units = "g/g" ;
+            H2O_MR:parameter_type = "NUCAPS data" ;
+            H2O_MR:coordinates = "Time Latitude Longitude Effective_Pressure" ;
+            H2O_MR:valid_range = 0.f, 1.e+08f ;
+            H2O_MR:_FillValue = -9999.f ;
+    '''         
+
+    data_labels = [
+                    'pres',
+                    'temp',
+                    'dwpt',
+                    'wvap',
+                    'relh',
+                    'lat',
+                    'lon'
+                    ]
+
+    sounding_inputs = {}
+    for label in data_labels:
+        sounding_inputs[label] = {}
+
+    sounding_inputs['pres']['dset_name'] = 'Pressure'
+    sounding_inputs['temp']['dset_name'] = 'Temperature'
+    sounding_inputs['wvap']['dset_name'] = 'H2O_MR'
+    sounding_inputs['lat']['dset_name']  = 'Latitude'
+    sounding_inputs['lon']['dset_name']  = 'Longitude'
+    sounding_inputs['dwpt'] = None
+    sounding_inputs['relh'] = None
+
+    # Open the file object
+    fileObj = Dataset(nucaps_file)
+
+    try:
+
+        sounding_inputs['pres']['node'] = fileObj.variables['Pressure']
+        sounding_inputs['temp']['node'] = fileObj.variables['Temperature']
+        sounding_inputs['wvap']['node'] = fileObj.variables['H2O_MR']
+        sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
+        sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
+
+        lat = sounding_inputs['lat']['node'][:].reshape(4,30)
+        lon = sounding_inputs['lon']['node'][:].reshape(4,30)
+
+        # Fill in some missing attributes
+        sounding_inputs['pres']['units'] = 'hPa'
+        sounding_inputs['temp']['units'] = 'K'
+        sounding_inputs['wvap']['units'] = 'g/kg'
+
+        for label in data_labels:
+            if sounding_inputs[label] != None:
+                LOG.info(">>> Processing {} ...".\
+                        format(sounding_inputs[label]['dset_name']))
+                for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                    attr = getattr(sounding_inputs[label]['node'],attr_name)
+                    LOG.debug("{} = {}".format(attr_name,attr))
+                    sounding_inputs[label][attr_name] = attr
+
+        row,col = get_geo_indices(lat,lon,lat_0=lat_0,lon_0=lon_0)
+        if row==None or col==None:
+            #LOG.error("Specified coordinates not found, aborting...")
+            raise Exception("No suitable lat/lon coordinates found, aborting...")
+             
+        LOG.debug("Retrieved row,col = {},{}".format(row,col))
+        sounding_inputs['lat_0'] = lat[row,col]
+        sounding_inputs['lon_0'] = lon[row,col]
+        #row,col = 10,10
+
+        sounding_inputs['pres']['data'] = sounding_inputs['pres']['node'][0,:]
+
+        temp = sounding_inputs['temp']['node'][:,:].reshape(4,30,100)
+        # Convert water vapor from g/g to g/kg
+        wvap = 1000.*sounding_inputs['wvap']['node'][:,:].reshape(4,30,100)
+
+        sounding_inputs['temp']['data'] = temp[row,col,:]
+        sounding_inputs['wvap']['data'] = wvap[row,col,:]
+
+        LOG.info("Closing {}".format(nucaps_file))
+        fileObj.close()
+        #sys.exit(1)
+
+    except Exception, err :
+        LOG.warn("There was a problem, closing {}".format(nucaps_file))
+        LOG.warn("{}".format(err))
+        LOG.debug(traceback.format_exc())
+        fileObj.close()
+        LOG.info("Exiting...")
+        sys.exit(1)
+
+    # Construct the masks of the various datasets, and mask the data accordingly
+    for label in ['temp','wvap']:
+        if sounding_inputs[label] != None:
+            LOG.debug(">>> Processing {} ..."
+                    .format(sounding_inputs[label]['dset_name']))
+            fill_value = sounding_inputs[label]['_FillValue']
             data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
             LOG.debug("ma.is_masked({}) = {}".format(label,ma.is_masked(data)))
 
@@ -558,131 +849,6 @@ def mirs_sounder(mirs_file,lat_0=None,lon_0=None):
     return sounding_inputs
 
 
-def dual_regression_sounder(dr_file,lat_0=None,lon_0=None):
-    '''
-    Plevs: Pressure for each level in mb (hPa)
-    TAir: Temperature profile in K
-    Dewpnt: Water vapor profile (mixing ratio) in g/kg
-
-    /Latitude
-    /Longitude
-    /Plevs
-    /TAir
-    /Dewpnt
-    '''
-
-    data_labels = [
-                    'pres',
-                    'temp',
-                    'dwpt',
-                    'wvap',
-                    'relh',
-                    'lat',
-                    'lon'
-                    ]
-
-    sounding_inputs = {}
-    for label in data_labels:
-        sounding_inputs[label] = {}
-
-    sounding_inputs['pres']['dset_name'] = 'Plevs'
-    sounding_inputs['temp']['dset_name'] = 'TAir'
-    sounding_inputs['dwpt']['dset_name'] = 'Dewpnt'
-    sounding_inputs['relh']['dset_name'] = 'RelHum'
-    sounding_inputs['lat']['dset_name']  = 'Latitude'
-    sounding_inputs['lon']['dset_name']  = 'Longitude'
-    sounding_inputs['wvap'] = None
-
-
-    # Open the file object
-    if h5py.is_hdf5(dr_file):
-        fileObj = h5py.File(dr_file,'r')
-    else:
-        LOG.error("{} does not exist or is not a valid HDF5 file, aborting...".\
-                format(dr_file))
-        sys.exit(1)
-
-    try:
-
-        sounding_inputs['pres']['node'] = fileObj['Plevs']
-        sounding_inputs['temp']['node'] = fileObj['TAir']
-        sounding_inputs['dwpt']['node'] = fileObj['Dewpnt']
-        sounding_inputs['relh']['node'] = fileObj['RelHum']
-        sounding_inputs['lat']['node'] = fileObj['Latitude']
-        sounding_inputs['lon']['node'] = fileObj['Longitude']
-
-        lat = sounding_inputs['lat']['node'][:,:]
-        lon = sounding_inputs['lon']['node'][:,:]
-
-        #FIXME: All attributes for the DR datasets appear to be strings, 
-        #       whether the attribute value is a string or not. So we can't 
-        #       determine the attribute type from the file, we just have 
-        #       *know* it. Why bother with self-descibing file formats then?
-        for label in data_labels:
-            if sounding_inputs[label] != None:
-                LOG.info(">>> Processing {} ...".\
-                        format(sounding_inputs[label]['dset_name']))
-                for attr_name in sounding_inputs[label]['node'].attrs.keys(): 
-                    attr = sounding_inputs[label]['node'].attrs[attr_name]
-                    LOG.debug("{} = {}".format(attr_name,np.squeeze(attr)))
-                    sounding_inputs[label][attr_name] = attr
-
-        row,col = get_geo_indices(lat,lon,lat_0=lat_0,lon_0=lon_0)
-
-        if row==None or col==None:
-            raise Exception("No suitable lat/lon coordinates found, aborting...")
-             
-        LOG.debug("Retrieved row,col = {},{}".format(row,col))
-        sounding_inputs['lat_0'] = lat[row,col]
-        sounding_inputs['lon_0'] = lon[row,col]
-        #row,col = 10,10
-
-        sounding_inputs['pres']['data'] = sounding_inputs['pres']['node'][:]
-        sounding_inputs['temp']['data'] = \
-                sounding_inputs['temp']['node'][:,row,col]
-        sounding_inputs['dwpt']['data'] = \
-                sounding_inputs['dwpt']['node'][:,row,col]
-        sounding_inputs['relh']['data'] = \
-                sounding_inputs['relh']['node'][:,row,col]
-
-        LOG.info("Closing {}".format(dr_file))
-        fileObj.close()
-
-    except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(dr_file))
-        LOG.warn("{}".format(err))
-        LOG.debug(traceback.format_exc())
-        fileObj.close()
-        LOG.info("Exiting...")
-        sys.exit(1)
-
-    # Construct the masks of the various datasets, and mask the data accordingly
-    for label in ['temp','dwpt','relh']:
-        if sounding_inputs[label] != None:
-            LOG.debug(">>> Processing {} ..."
-                    .format(sounding_inputs[label]['dset_name']))
-            fill_value = float(sounding_inputs[label]['missing_value'][0])
-            data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
-            LOG.debug("ma.is_masked({}) = {}".format(label,ma.is_masked(data)))
-
-            if ma.is_masked(data):
-                if data.mask.shape == ():
-                    data_mask = np.ones(data.shape,dtype='bool')
-                else:
-                    data_mask = data.mask
-            else: 
-                data_mask = np.zeros(data.shape,dtype='bool')
-
-            LOG.debug("There are {}/{} masked values in {}".\
-                    format(np.sum(data_mask),data.size,label))
-
-            sounding_inputs[label]['mask'] = data_mask
-            sounding_inputs[label]['data'] = ma.array(data,mask=data_mask)
-
-
-    return sounding_inputs
-
-
 
 def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options):
 
@@ -723,7 +889,7 @@ def _argparse():
 
     import argparse
 
-    dataChoices=['HRPT','MIRS','DR']
+    dataChoices=['IAPP','MIRS','DR','NUCAPS']
 
     defaults = {
                 'input_file':None,
@@ -873,14 +1039,16 @@ def main():
     # Read in the input file, and return a doctionary containing the required
     # data
 
-    dataChoices=['HRPT','MIRS','DR']
+    dataChoices=['IAPP','MIRS','DR','NUCAPS']
 
-    if datatype == 'HRPT' :
-        sounding_inputs = hrpt_sounder(input_file,lat_0=lat_0,lon_0=lon_0)
+    if datatype == 'IAPP' :
+        sounding_inputs = iapp_sounder(input_file,lat_0=lat_0,lon_0=lon_0)
     elif datatype == 'MIRS' :
         sounding_inputs = mirs_sounder(input_file,lat_0=lat_0,lon_0=lon_0)
     elif datatype == 'DR' :
         sounding_inputs = dual_regression_sounder(input_file,lat_0=lat_0,lon_0=lon_0)
+    elif datatype == 'NUCAPS' :
+        sounding_inputs = nucaps_sounder(input_file,lat_0=lat_0,lon_0=lon_0)
     else:
         pass
 

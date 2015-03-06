@@ -24,7 +24,7 @@ fi
 . ${CSPP_SOUNDER_QL_HOME}/cspp_sounder_ql_runtime.sh
 
 usage() {
-    $PY $CSPP_SOUNDER_QL_HOME/sounder_ql/sounder_skewt.py --help
+    $PY $CSPP_SOUNDER_QL_HOME/sounder_ql/sounder_profile.py --help
 }
 
 if [ -z "$1" ]; then
@@ -32,5 +32,5 @@ if [ -z "$1" ]; then
     exit 3
 fi
 
-$PY $CSPP_SOUNDER_QL_HOME/sounder_ql/sounder_skewt.py  -zz "$@"
+$PY $CSPP_SOUNDER_QL_HOME/sounder_ql/sounder_profile.py  -zz "$@"
 

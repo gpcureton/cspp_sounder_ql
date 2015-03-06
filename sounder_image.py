@@ -4,8 +4,14 @@
 sounder_image.py
 
 Purpose: Create a plot of temperature, dewpoint or relative humidity,
-         at a particular pressure level. Supports HRPT, MIRS 
-         and Dual Regression files.
+         at a particular pressure level. Supports outputs from the following 
+         packages...
+         
+         * International ATOVS Processing Package (IAPP)
+         * Microwave Integrated Retrieval System (MIRS)
+         * CSPP Hyperspectral Retrieval (Dual Regression) Package
+         * NOAA Unique CrIS/ATMS Product System (NUCAPS)
+         
 
 Preconditions:
     * matplotlib (with basemap)
@@ -17,14 +23,14 @@ Optional:
 
 Minimum commandline:
 
-    python sounder_image.py  --input_files=INPUTFILES --datatype=DATATYPE
+    python sounder_image.py  INPUTFILE DATATYPE
 
 where...
 
     INPUTFILES: The fully qualified path to the input files. May be a 
     directory or a file glob.
 
-    DATATYPE: One of 'HRPT','MIRS' or 'DR'.
+    DATATYPE: One of 'IAPP','MIRS', 'DR' or 'NUCAPS'.
 
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2014-05-10.
@@ -196,7 +202,7 @@ def get_pressure_index(pressure,pres_0=850.,kd_dist=10.):
     return level
 
 
-def hrpt_sounder(hrpt_file,pres_0=850.):
+def iapp_sounder(iapp_file,pres_0=850.):
     '''
     Pressure_Levels: Pressure for each level in mb (hPa)
     Temperature_Retrieval: Temperature profile in K
@@ -263,7 +269,7 @@ def hrpt_sounder(hrpt_file,pres_0=850.):
 
 
     # Open the file object
-    fileObj = Dataset(hrpt_file)
+    fileObj = Dataset(iapp_file)
 
     try:
 
@@ -312,11 +318,11 @@ def hrpt_sounder(hrpt_file,pres_0=850.):
         sounding_inputs['dwpt']['data'] = sounding_inputs['dwpt']['node'][:,:,level]
         sounding_inputs['wvap']['data'] = sounding_inputs['wvap']['node'][:,:,level]
 
-        LOG.info("Closing {}".format(hrpt_file))
+        LOG.info("Closing {}".format(iapp_file))
         fileObj.close()
 
     except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(hrpt_file))
+        LOG.warn("There was a problem, closing {}".format(iapp_file))
         LOG.warn("{}".format(err))
         LOG.debug(traceback.format_exc())
         fileObj.close()
@@ -455,6 +461,9 @@ def mirs_sounder(mirs_file,pres_0=850.):
                     sounding_inputs[label][attr_name] = attr
 
         # Search for the pressure level closest to the input value
+        LOG.debug("Shape of pressure is {}".format(pressure.shape))
+        LOG.debug("pressure is {}".format(pressure))
+
         pressure_scope = 10.
         LOG.debug("Scope of pressure level search is {} hPa"
                 .format(pressure_scope))
@@ -705,6 +714,225 @@ def dual_regression_sounder(dr_file,pres_0=850.):
     return sounding_inputs
 
 
+def nucaps_sounder(nucaps_file,pres_0=850.):
+    '''
+    Pressure: Pressure for each layer in mb (hPa)
+    Temperature: Temperature profile in K
+    H2O_MR: Water vapor profile (mixing ratio) in g/g
+    '''
+
+    '''
+    float Latitude(Number_of_CrIS_FORs) ;
+            Latitude:long_name = "Retrieval latitude values for each CrIS FOR" ;
+            Latitude:standard_name = "latitude" ;
+            Latitude:units = "degrees_north" ;
+            Latitude:parameter_type = "NUCAPS data" ;
+            Latitude:valid_range = -90.f, 90.f ;
+            Latitude:_FillValue = -9999.f ;
+
+    float Longitude(Number_of_CrIS_FORs) ;
+            Longitude:long_name = "Retrieval longitude values for each CrIS FOR" ;
+            Longitude:standard_name = "longitude" ;
+            Longitude:units = "degrees_east" ;
+            Longitude:parameter_type = "NUCAPS data" ;
+            Longitude:valid_range = -180.f, 180.f ;
+            Longitude:_FillValue = -9999.f ;
+
+    float Pressure(Number_of_CrIS_FORs, Number_of_P_Levels) ;
+            Pressure:long_name = "Pressure" ;
+            Pressure:units = "mb" ;
+            Pressure:parameter_type = "NUCAPS data" ;
+            Pressure:coordinates = "Time Latitude Longitude" ;
+            Pressure:valid_range = 0.f, 2000.f ;
+            Pressure:_FillValue = -9999.f ;
+
+    float Temperature(Number_of_CrIS_FORs, Number_of_P_Levels) ;
+            Temperature:long_name = "Temperature" ;
+            Temperature:standard_name = "air_temperature" ;
+            Temperature:units = "Kelvin" ;
+            Temperature:parameter_type = "NUCAPS data" ;
+            Temperature:coordinates = "Time Latitude Longitude Pressure" ;
+            Temperature:valid_range = 0.f, 1000.f ;
+            Temperature:_FillValue = -9999.f ;
+
+    float H2O_MR(Number_of_CrIS_FORs, Number_of_P_Levels) ;
+            H2O_MR:long_name = "water vapor mixing ratio" ;
+            H2O_MR:units = "g/g" ;
+            H2O_MR:parameter_type = "NUCAPS data" ;
+            H2O_MR:coordinates = "Time Latitude Longitude Effective_Pressure" ;
+            H2O_MR:valid_range = 0.f, 1.e+08f ;
+            H2O_MR:_FillValue = -9999.f ;
+    '''         
+
+    data_labels = [
+                    'pres',
+                    'temp',
+                    'dwpt',
+                    'wvap',
+                    'relh',
+                    'lat',
+                    'lon'
+                    ]
+
+    sounding_inputs = {}
+    for label in data_labels:
+        sounding_inputs[label] = {}
+
+    sounding_inputs['pres']['dset_name'] = 'Pressure'
+    sounding_inputs['temp']['dset_name'] = 'Temperature'
+    sounding_inputs['wvap']['dset_name'] = 'H2O_MR'
+    sounding_inputs['lat']['dset_name']  = 'Latitude'
+    sounding_inputs['lon']['dset_name']  = 'Longitude'
+    sounding_inputs['dwpt'] = None
+    sounding_inputs['relh'] = None
+
+    # Open the file object
+    fileObj = Dataset(nucaps_file)
+
+    try:
+
+        sounding_inputs['pres']['node'] = fileObj.variables['Pressure']
+        sounding_inputs['temp']['node'] = fileObj.variables['Temperature']
+        sounding_inputs['wvap']['node'] = fileObj.variables['H2O_MR']
+        sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
+        sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
+
+        pressure = sounding_inputs['pres']['node'][0,:]
+
+        # Fill in some missing attributes
+        sounding_inputs['pres']['units'] = 'hPa'
+        sounding_inputs['temp']['units'] = 'K'
+        sounding_inputs['wvap']['units'] = 'g/kg'
+
+        for label in data_labels:
+            if sounding_inputs[label] != None:
+                LOG.info(">>> Processing {} ..."
+                        .format(sounding_inputs[label]['dset_name']))
+                for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                    attr = getattr(sounding_inputs[label]['node'],attr_name)
+                    LOG.debug("{} = {}".format(attr_name,attr))
+                    sounding_inputs[label][attr_name] = attr
+
+        # Search for the pressure level closest to the input value
+        LOG.debug("Shape of pressure is {}".format(pressure.shape))
+        LOG.debug("pressure is {}".format(pressure))
+
+        pressure_scope = 10.
+        LOG.debug("Scope of pressure level search is {} hPa"
+                .format(pressure_scope))
+        level = get_pressure_index(pressure,pres_0=pres_0,
+                kd_dist=pressure_scope)
+        attempts = 1
+        while (level==None and attempts<10):
+            pressure_scope *= 1.1
+            LOG.debug("Scope of pressure level search is {} hPa"
+                    .format(pressure_scope))
+            level = get_pressure_index(pressure,pres_0=pres_0,
+                    kd_dist=pressure_scope)
+            attempts += 1
+
+        if level==None:
+            raise Exception("No suitable pressure level found, aborting...")
+             
+        LOG.debug("Retrieved level = {}".format(level))
+        sounding_inputs['pres_0'] = pressure[level]
+        #row,col = 10,10
+
+        sounding_inputs['lat']['data'] = sounding_inputs['lat']['node'][:].reshape(4,30)
+        sounding_inputs['lon']['data'] = sounding_inputs['lon']['node'][:].reshape(4,30)
+        sounding_inputs['temp']['data'] = sounding_inputs['temp']['node'][:,level].reshape(4,30)
+        # Convert water vapor from g/g to g/kg
+        sounding_inputs['wvap']['data'] = 1000.*sounding_inputs['wvap']['node'][:,level].reshape(4,30)
+
+        LOG.info("Closing {}".format(nucaps_file))
+        fileObj.close()
+
+    except Exception, err :
+        LOG.warn("There was a problem, closing {}".format(nucaps_file))
+        LOG.warn("{}".format(err))
+        LOG.debug(traceback.format_exc())
+        fileObj.close()
+        LOG.info("Exiting...")
+        sys.exit(1)
+
+    # Contruct the pressure array
+    pressure_array = pressure[level] * \
+            np.ones(sounding_inputs['lat']['data'].shape,dtype='float')
+    LOG.debug("pressure_array.shape =  {}".format(pressure_array.shape))
+
+    # Construct the masks of the various datasets
+    for label in ['temp','wvap','lat','lon']:
+        if sounding_inputs[label] != None:
+            LOG.debug(">>> Processing {} ..."
+                    .format(sounding_inputs[label]['dset_name']))
+            fill_value = sounding_inputs[label]['_FillValue']
+            data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
+            LOG.debug("ma.is_masked({}) = {}".format(label,ma.is_masked(data)))
+
+            if ma.is_masked(data):
+                if data.mask.shape == ():
+                    data_mask = np.ones(data.shape,dtype='bool')
+                else:
+                    data_mask = data.mask
+            else: 
+                data_mask = np.zeros(data.shape,dtype='bool')
+
+            LOG.debug("There are {}/{} masked values in {}".\
+                    format(np.sum(data_mask),data.size,label))
+
+            sounding_inputs[label]['mask'] = data_mask
+
+    # Computing the relative humidity
+    sounding_inputs['relh'] = {}
+    LOG.debug("wvap.shape =  {}".format(sounding_inputs['wvap']['data'].shape))
+    LOG.debug("temp.shape =  {}".format(sounding_inputs['temp']['data'].shape))
+
+    relh_mask = sounding_inputs['wvap']['mask']+sounding_inputs['temp']['mask']
+
+    wvap = ma.array(sounding_inputs['wvap']['data'],mask=relh_mask)
+    temp = ma.array(sounding_inputs['temp']['data'],mask=relh_mask)
+    pressure_array = ma.array(pressure_array,mask=relh_mask)
+
+    mr_to_rh_vec = np.vectorize(mr_to_rh)
+    rh = mr_to_rh_vec(wvap,pressure_array,temp).real
+
+    sounding_inputs['relh']['data'] = rh
+    sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
+            else np.zeros(rh.shape,dtype='bool')
+    sounding_inputs['relh']['units'] = '%'
+    sounding_inputs['relh']['long_name'] = 'Relative Humidity'
+
+    LOG.debug("ma.is_masked({}) = {}".format('relh',ma.is_masked(rh)))
+    LOG.debug("There are {}/{} masked values in relh".format(np.sum(rh.mask),rh.size))
+
+    # Computing the dewpoint temperature
+    sounding_inputs['dwpt'] = {}
+    LOG.debug("relh.shape =  {}".format(sounding_inputs['relh']['data'].shape))
+    LOG.debug("temp.shape =  {}".format(sounding_inputs['temp']['data'].shape))
+
+    dwpt_mask = sounding_inputs['relh']['mask']+sounding_inputs['temp']['mask']
+
+    rh = ma.array(sounding_inputs['relh']['data'],mask=dwpt_mask)
+    temp = ma.array(sounding_inputs['temp']['data'],mask=dwpt_mask)
+    pressure_array = ma.array(pressure_array,mask=dwpt_mask)
+
+    dewpoint_AB_vec = np.vectorize(dewpoint_AB)
+    dwpt = dewpoint_AB_vec(temp,rh) + 273.15
+
+    sounding_inputs['dwpt']['data'] = dwpt
+    sounding_inputs['dwpt']['mask'] = dwpt.mask if  ma.is_masked(dwpt) \
+            else np.zeros(dwpt.shape,dtype='bool')
+    sounding_inputs['dwpt']['units'] = 'K'
+    sounding_inputs['dwpt']['long_name'] = 'Dew-point Temperature in K'
+
+    LOG.debug("ma.is_masked({}) = {}".format('dwpt',ma.is_masked(dwpt)))
+    LOG.debug("There are {} masked values in dwpt".format(np.sum(dwpt.mask)))
+    LOG.debug("dwpt.shape =  {}".format(sounding_inputs['dwpt']['data'].shape))
+    LOG.debug("dwpt_mask.shape =  {}".format(sounding_inputs['dwpt']['mask'].shape))
+
+    return sounding_inputs
+
+
 def plotData(data,data_mask,units,pngName,stride=1,dpi=200):
     '''
     Plot the input dataset in swath projection
@@ -913,7 +1141,7 @@ def _argparse():
 
     import argparse
 
-    dataChoices=['HRPT','MIRS','DR']
+    dataChoices=['IAPP','MIRS','DR','NUCAPS']
     prodChoices=['temp','dwpt','relh']
     map_res_choice = ['c','l','i']
 
@@ -937,8 +1165,8 @@ def _argparse():
                 }
 
     description = '''Create a contour plot of temperature, dewpoint or something 
-                     else at a particular pressure level. Supports HRPT and MIRS 
-                     files.'''
+                     else at a particular pressure level. Supports IAPP, MIRS, DR 
+                     and NUCAPS files.'''
 
     usage = "usage: %prog [mandatory args] [options]"
     version = __version__
@@ -1184,14 +1412,16 @@ def main():
     # Read in the input file, and return a dictionary containing the required
     # data
 
-    dataChoices=['HRPT','MIRS','DR']
+    dataChoices=['IAPP','MIRS','DR','NUCAPS']
 
-    if datatype == 'HRPT' :
-        sounding_inputs = hrpt_sounder(input_file,pres_0=pressure)
+    if datatype == 'IAPP' :
+        sounding_inputs = iapp_sounder(input_file,pres_0=pressure)
     elif datatype == 'MIRS' :
         sounding_inputs = mirs_sounder(input_file,pres_0=pressure)
     elif datatype == 'DR' :
         sounding_inputs = dual_regression_sounder(input_file,pres_0=pressure)
+    elif datatype == 'NUCAPS' :
+        sounding_inputs = nucaps_sounder(input_file,pres_0=pressure)
     else:
         pass
 
