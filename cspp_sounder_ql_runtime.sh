@@ -48,11 +48,11 @@ test -n "$CSPP_SOUNDER_QL_HOME" || echo "CSPP_IAPP_HOME is not set. Please set t
 export DCONFIG=${CSPP_SOUNDER_QL_HOME}/common/cspp_cfg/cfg
 
 
-if [ ! -z "${DCONFIG}" ];
-then
-      echo "Warning overridden default: DCONFIG="${DCONFIG}
+#if [ ! -z "${DCONFIG}" ];
+#then
+      #echo "Warning overridden default: DCONFIG="${DCONFIG}
 
-fi
+#fi
 
 #export JPSS_REMOTE_ANC_DIR='ftp://ftp.ssec.wisc.edu/pub/eosdb/ancillary'
 

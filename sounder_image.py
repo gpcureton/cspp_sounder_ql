@@ -28,7 +28,7 @@ Minimum commandline:
 where...
 
     INPUTFILES: The fully qualified path to the input files. May be a 
-    directory or a file glob.
+    file glob.
 
     DATATYPE: One of 'IAPP','MIRS', 'DR' or 'NUCAPS'.
 
@@ -202,7 +202,7 @@ def get_pressure_index(pressure,pres_0=850.,kd_dist=10.):
     return level
 
 
-def iapp_sounder(iapp_file,pres_0=850.):
+def iapp_sounder(iapp_file_list,pres_0=850.):
     '''
     Pressure_Levels: Pressure for each level in mb (hPa)
     Temperature_Retrieval: Temperature profile in K
@@ -267,67 +267,104 @@ def iapp_sounder(iapp_file,pres_0=850.):
     sounding_inputs['lon']['dset_name']  = 'Longitude'
     sounding_inputs['relh'] = None
 
+    LOG.debug("Input file list: {}".format(iapp_file_list))
 
-    # Open the file object
-    fileObj = Dataset(iapp_file)
+    first_granule = True
 
-    try:
+    for grans in np.arange(len(iapp_file_list)):
 
-        sounding_inputs['pres']['node'] = fileObj.variables['Pressure_Levels']
-        sounding_inputs['temp']['node'] = fileObj.variables['Temperature_Retrieval']
-        sounding_inputs['dwpt']['node'] = fileObj.variables['Dew_Point_Temp_Retrieval']
-        sounding_inputs['wvap']['node'] = fileObj.variables['WaterVapor_Retrieval']
-        sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
-        sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
+        try:
 
-        pressure = sounding_inputs['pres']['node'][:]
+            LOG.debug("Ingesting granule {} ...".format(grans))
 
-        for label in data_labels:
-            if sounding_inputs[label] != None:
-                LOG.info(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
-                for attr_name in sounding_inputs[label]['node'].ncattrs(): 
-                    attr = getattr(sounding_inputs[label]['node'],attr_name)
-                    LOG.debug("{} = {}".format(attr_name,attr))
-                    sounding_inputs[label][attr_name] = attr
+            iapp_file = iapp_file_list[grans]
+            LOG.debug("Ingesting granule {} ...".format(iapp_file))
 
-        # Search for the pressure level closest to the input value
-        pressure_scope = 10.
-        LOG.debug("Scope of pressure level search is {} hPa"
-                .format(pressure_scope))
-        level = get_pressure_index(pressure,pres_0=pres_0,
-                kd_dist=pressure_scope)
-        attempts = 1
-        while (level==None and attempts<10):
-            pressure_scope *= 1.1
-            LOG.debug("Scope of pressure level search is {} hPa"
-                    .format(pressure_scope))
-            level = get_pressure_index(pressure,pres_0=pres_0,
-                    kd_dist=pressure_scope)
-            attempts += 1
+            # Open the file object
+            fileObj = Dataset(iapp_file)
 
-        if level==None:
-            raise Exception("No suitable pressure level found, aborting...")
-             
-        LOG.debug("Retrieved level = {}".format(level))
-        sounding_inputs['pres_0'] = pressure[level]
-        #row,col = 10,10
+            # Open the dataset nodes for each of the required datasets
+            sounding_inputs['pres']['node'] = fileObj.variables['Pressure_Levels']
+            sounding_inputs['temp']['node'] = fileObj.variables['Temperature_Retrieval']
+            sounding_inputs['dwpt']['node'] = fileObj.variables['Dew_Point_Temp_Retrieval']
+            sounding_inputs['wvap']['node'] = fileObj.variables['WaterVapor_Retrieval']
+            sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
+            sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
 
-        sounding_inputs['lat']['data'] = sounding_inputs['lat']['node'][:,:]
-        sounding_inputs['lon']['data'] = sounding_inputs['lon']['node'][:,:]
-        sounding_inputs['temp']['data'] = sounding_inputs['temp']['node'][:,:,level]
-        sounding_inputs['dwpt']['data'] = sounding_inputs['dwpt']['node'][:,:,level]
-        sounding_inputs['wvap']['data'] = sounding_inputs['wvap']['node'][:,:,level]
+            if first_granule:
 
-        LOG.info("Closing {}".format(iapp_file))
-        fileObj.close()
+                # Get the pressure scale
+                pressure = sounding_inputs['pres']['node'][:]
 
-    except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(iapp_file))
-        LOG.warn("{}".format(err))
-        LOG.debug(traceback.format_exc())
-        fileObj.close()
-        LOG.info("Exiting...")
-        sys.exit(1)
+                for label in data_labels:
+                    if sounding_inputs[label] != None:
+                        LOG.info(">>> Processing {} ..."
+                                .format(sounding_inputs[label]['dset_name']))
+                        for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                            attr = getattr(sounding_inputs[label]['node'],attr_name)
+                            LOG.debug("{} = {}".format(attr_name,attr))
+                            sounding_inputs[label][attr_name] = attr
+
+                # Search for the pressure level closest to the input value
+                pressure_scope = 10.
+                LOG.debug("Scope of pressure level search is {} hPa"
+                        .format(pressure_scope))
+                level = get_pressure_index(pressure,pres_0=pres_0,
+                        kd_dist=pressure_scope)
+                attempts = 1
+                while (level==None and attempts<10):
+                    pressure_scope *= 1.1
+                    LOG.debug("Scope of pressure level search is {} hPa"
+                            .format(pressure_scope))
+                    level = get_pressure_index(pressure,pres_0=pres_0,
+                            kd_dist=pressure_scope)
+                    attempts += 1
+
+                if level==None:
+                    raise Exception("No suitable pressure level found, aborting...")
+                     
+                LOG.debug("Retrieved level = {}".format(level))
+                sounding_inputs['pres_0'] = pressure[level]
+                data_labels.remove('pres')
+
+            # Add to the lat and lon and data arrays...
+            for label in ['lat','lon']:
+                try :
+                    sounding_inputs[label]['data']  = np.vstack((
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:]))
+                    LOG.debug("subsequent arrays...")
+                except KeyError :
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:]
+                    LOG.debug("first arrays...")
+
+                LOG.debug("Intermediate {} shape = {}".format(
+                    label,sounding_inputs[label]['data'].shape))
+
+            # Add to the temp, dewpoint, water vapour and relative humidity data arrays...
+            for label in ['temp','dwpt','wvap']:
+                try :
+                    sounding_inputs[label]['data']  = np.vstack((
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:,level]))
+                    LOG.debug("subsequent arrays...")
+                except KeyError :
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:,level]
+                    LOG.debug("first arrays...")
+
+                LOG.debug("Intermediate {} shape = {}".format(
+                    label,sounding_inputs[label]['data'].shape))
+
+            first_granule = False
+
+            LOG.info("Closing {}".format(iapp_file))
+            fileObj.close()
+
+        except Exception, err :
+            LOG.warn("There was a problem, closing {}".format(iapp_file))
+            LOG.warn("{}".format(err))
+            LOG.debug(traceback.format_exc())
+            fileObj.close()
+            LOG.info("Exiting...")
+            sys.exit(1)
 
     # Contruct the pressure array
     pressure_array = pressure[level] * \
@@ -337,8 +374,8 @@ def iapp_sounder(iapp_file,pres_0=850.):
     # Construct the masks of the various datasets
     for label in ['temp','dwpt','wvap','lat','lon']:
         if sounding_inputs[label] != None:
-            LOG.debug(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
-            #LOG.debug('{} --> sounding_inputs[label]['data'])
+            LOG.debug(">>> Processing {} ..."
+                    .format(sounding_inputs[label]['dset_name']))
             fill_value = sounding_inputs[label]['_FillValue']
             #data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
             data = ma.masked_equal(sounding_inputs[label]['data'],np.nan)
@@ -383,7 +420,7 @@ def iapp_sounder(iapp_file,pres_0=850.):
     return sounding_inputs
 
 
-def mirs_sounder(mirs_file,pres_0=850.):
+def mirs_sounder(mirs_file_list,pres_0=850.):
     '''
     Player: Pressure for each layer in mb (hPa)
     PTemp: Temperature profile in K
@@ -431,75 +468,109 @@ def mirs_sounder(mirs_file,pres_0=850.):
     sounding_inputs['dwpt'] = None
     sounding_inputs['relh'] = None
 
-    # Open the file object
-    fileObj = Dataset(mirs_file)
+    LOG.debug("Input file list: {}".format(mirs_file_list))
 
-    try:
+    first_granule = True
 
-        sounding_inputs['pres']['node'] = fileObj.variables['Player']
-        sounding_inputs['temp']['node'] = fileObj.variables['PTemp']
-        sounding_inputs['wvap']['node'] = fileObj.variables['PVapor']
-        sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
-        sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
+    for grans in np.arange(len(mirs_file_list)):
 
-        pressure = sounding_inputs['pres']['node'][:]
+        try:
 
-        # Fill in some missing attributes
-        fill_value = getattr(fileObj,'missing_value')
-        sounding_inputs['pres']['units'] = 'hPa'
-        sounding_inputs['temp']['units'] = 'K'
-        sounding_inputs['wvap']['units'] = 'g/kg'
+            LOG.debug("Ingesting granule {} ...".format(grans))
 
-        for label in data_labels:
-            if sounding_inputs[label] != None:
-                LOG.info(">>> Processing {} ..."
-                        .format(sounding_inputs[label]['dset_name']))
-                sounding_inputs[label]['_FillValue'] = fill_value
-                for attr_name in sounding_inputs[label]['node'].ncattrs(): 
-                    attr = getattr(sounding_inputs[label]['node'],attr_name)
-                    LOG.debug("{} = {}".format(attr_name,attr))
-                    sounding_inputs[label][attr_name] = attr
+            mirs_file = mirs_file_list[grans]
+            LOG.debug("Ingesting granule {} ...".format(mirs_file))
 
-        # Search for the pressure level closest to the input value
-        LOG.debug("Shape of pressure is {}".format(pressure.shape))
-        LOG.debug("pressure is {}".format(pressure))
+            # Open the file object
+            fileObj = Dataset(mirs_file)
 
-        pressure_scope = 10.
-        LOG.debug("Scope of pressure level search is {} hPa"
-                .format(pressure_scope))
-        level = get_pressure_index(pressure,pres_0=pres_0,
-                kd_dist=pressure_scope)
-        attempts = 1
-        while (level==None and attempts<10):
-            pressure_scope *= 1.1
-            LOG.debug("Scope of pressure level search is {} hPa"
-                    .format(pressure_scope))
-            level = get_pressure_index(pressure,pres_0=pres_0,
-                    kd_dist=pressure_scope)
-            attempts += 1
+            sounding_inputs['pres']['node'] = fileObj.variables['Player']
+            sounding_inputs['temp']['node'] = fileObj.variables['PTemp']
+            sounding_inputs['wvap']['node'] = fileObj.variables['PVapor']
+            sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
+            sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
 
-        if level==None:
-            raise Exception("No suitable pressure level found, aborting...")
-             
-        LOG.debug("Retrieved level = {}".format(level))
-        sounding_inputs['pres_0'] = pressure[level]
-        #row,col = 10,10
+            # Fill in some missing attributes
+            fill_value = getattr(fileObj,'missing_value')
+            sounding_inputs['pres']['units'] = 'hPa'
+            sounding_inputs['temp']['units'] = 'K'
+            sounding_inputs['wvap']['units'] = 'g/kg'
 
-        sounding_inputs['lat']['data'] = sounding_inputs['lat']['node'][:,:]
-        sounding_inputs['lon']['data'] = sounding_inputs['lon']['node'][:,:]
-        sounding_inputs['temp']['data'] = sounding_inputs['temp']['node'][:,:,level]
-        sounding_inputs['wvap']['data'] = sounding_inputs['wvap']['node'][:,:,level]
+            if first_granule:
 
-        LOG.info("Closing {}".format(mirs_file))
-        fileObj.close()
+                # Get the pressure scale
+                pressure = sounding_inputs['pres']['node'][:]
 
-    except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(mirs_file))
-        LOG.warn("{}".format(err))
-        LOG.debug(traceback.format_exc())
-        fileObj.close()
-        LOG.info("Exiting...")
-        sys.exit(1)
+                for label in data_labels:
+                    if sounding_inputs[label] != None:
+                        LOG.info(">>> Processing {} ..."
+                                .format(sounding_inputs[label]['dset_name']))
+                        sounding_inputs[label]['_FillValue'] = fill_value
+                        for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                            attr = getattr(sounding_inputs[label]['node'],attr_name)
+                            LOG.debug("{} = {}".format(attr_name,attr))
+                            sounding_inputs[label][attr_name] = attr
+
+                # Search for the pressure level closest to the input value
+                pressure_scope = 10.
+                LOG.debug("Scope of pressure level search is {} hPa"
+                        .format(pressure_scope))
+                level = get_pressure_index(pressure,pres_0=pres_0,
+                        kd_dist=pressure_scope)
+                attempts = 1
+                while (level==None and attempts<10):
+                    pressure_scope *= 1.1
+                    LOG.debug("Scope of pressure level search is {} hPa"
+                            .format(pressure_scope))
+                    level = get_pressure_index(pressure,pres_0=pres_0,
+                            kd_dist=pressure_scope)
+                    attempts += 1
+
+                if level==None:
+                    raise Exception("No suitable pressure level found, aborting...")
+                     
+                LOG.debug("Retrieved level = {}".format(level))
+                sounding_inputs['pres_0'] = pressure[level]
+                data_labels.remove('pres')
+
+            # Add to the lat and lon and data arrays...
+            for label in ['lat','lon']:
+                try :
+                    sounding_inputs[label]['data']  = np.vstack((
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:]))
+                    LOG.debug("subsequent arrays...")
+                except KeyError :
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:]
+                    LOG.debug("first arrays...")
+
+                LOG.debug("Intermediate {} shape = {}".format(
+                    label,sounding_inputs[label]['data'].shape))
+
+            # Add to the temp, dewpoint, water vapour and relative humidity data arrays...
+            for label in ['temp','wvap']:
+                try :
+                    sounding_inputs[label]['data']  = np.vstack((
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:,level]))
+                    LOG.debug("subsequent arrays...")
+                except KeyError :
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:,level]
+                    LOG.debug("first arrays...")
+
+                LOG.debug("Intermediate {} shape = {}".format(
+                    label,sounding_inputs[label]['data'].shape))
+
+            first_granule = False
+
+            LOG.info("Closing {}".format(mirs_file))
+            fileObj.close()
+
+        except Exception, err :
+            LOG.warn("There was a problem, closing {}".format(mirs_file))
+            LOG.warn("{}".format(err))
+            LOG.debug(traceback.format_exc())
+            fileObj.close()
+            LOG.info("Exiting...")
+            sys.exit(1)
 
     # Contruct the pressure array
     pressure_array = pressure[level] * \
@@ -578,17 +649,39 @@ def mirs_sounder(mirs_file,pres_0=850.):
     return sounding_inputs
 
 
-def dual_regression_sounder(dr_file,pres_0=850.):
+def dual_regression_sounder(dr_file_list,pres_0=850.):
     '''
     Plevs: Pressure for each level in mb (hPa)
     TAir: Temperature profile in K
     Dewpnt: Water vapor profile (mixing ratio) in g/kg
 
     /Latitude
+        missing_value : -9999.
+        units : degrees_north
+        valid_range : -90.0,90.0
     /Longitude
+        missing_value : -9999.
+        units : degrees_east
+        valid_range : -180.0,180.0
     /Plevs
+        description: vertical coordinate axis (101 pressure levels)
+        units : hPa
     /TAir
+        description : retrieved temperature profile at 101 levels
+        missing_value : -9999.
+        units : K
     /Dewpnt
+        description : dew point temperature profile
+        missing_value : -9999.
+        units : K
+    /RelHum
+        description : retrieved relative humidity at 101 levels
+        missing_value : -9999.
+        units : %
+    /H2OMMR
+        description : retrieved humidity (water vapor mixing ratio) profile at 101 levels
+        missing_value : -9999.
+        units : g/kg
     '''
 
     data_labels = [
@@ -609,80 +702,119 @@ def dual_regression_sounder(dr_file,pres_0=850.):
     sounding_inputs['temp']['dset_name'] = 'TAir'
     sounding_inputs['dwpt']['dset_name'] = 'Dewpnt'
     sounding_inputs['relh']['dset_name'] = 'RelHum'
+    sounding_inputs['wvap']['dset_name'] = 'H2OMMR'
     sounding_inputs['lat']['dset_name']  = 'Latitude'
     sounding_inputs['lon']['dset_name']  = 'Longitude'
-    sounding_inputs['wvap'] = None
 
-    # Open the file object
-    if h5py.is_hdf5(dr_file):
-        fileObj = h5py.File(dr_file,'r')
-    else:
-        LOG.error("{} does not exist or is not a valid HDF5 file, aborting...".\
-                format(dr_file))
-        sys.exit(1)
 
-    try:
+    LOG.debug("Input file list: {}".format(dr_file_list))
 
-        sounding_inputs['pres']['node'] = fileObj['Plevs']
-        sounding_inputs['temp']['node'] = fileObj['TAir']
-        sounding_inputs['dwpt']['node'] = fileObj['Dewpnt']
-        sounding_inputs['relh']['node'] = fileObj['RelHum']
-        sounding_inputs['lat']['node'] = fileObj['Latitude']
-        sounding_inputs['lon']['node'] = fileObj['Longitude']
+    first_granule = True
 
-        pressure = sounding_inputs['pres']['node'][:]
+    for grans in np.arange(len(dr_file_list)):
 
-        #FIXME: All attributes for the DR datasets appear to be strings, 
-        #       whether the attribute value is a string or not. So we can't 
-        #       determine the attribute type from the file, we just have 
-        #       *know* it. Why bother with self-descibing file formats then?
-        for label in data_labels:
-            if sounding_inputs[label] != None:
-                LOG.info(">>> Processing {} ...".\
-                        format(sounding_inputs[label]['dset_name']))
-                for attr_name in sounding_inputs[label]['node'].attrs.keys(): 
-                    attr = sounding_inputs[label]['node'].attrs[attr_name]
-                    LOG.debug("{} = {}".format(attr_name,np.squeeze(attr)))
-                    sounding_inputs[label][attr_name] = attr
+        try:
 
-        # Search for the pressure level closest to the input value
-        pressure_scope = 10.
-        LOG.debug("Scope of pressure level search is {} hPa"
-                .format(pressure_scope))
-        level = get_pressure_index(pressure,pres_0=pres_0,
-                kd_dist=pressure_scope)
-        attempts = 1
-        while (level==None and attempts<10):
-            pressure_scope *= 1.1
-            LOG.debug("Scope of pressure level search is {} hPa"
-                    .format(pressure_scope))
-            level = get_pressure_index(pressure,pres_0=pres_0,
-                    kd_dist=pressure_scope)
-            attempts += 1
+            LOG.debug("Ingesting granule {} ...".format(grans))
 
-        if level==None:
-            raise Exception("No suitable pressure level found, aborting...")
-             
-        LOG.debug("Retrieved level = {}".format(level))
-        sounding_inputs['pres_0'] = pressure[level]
+            dr_file = dr_file_list[grans]
+            LOG.debug("Ingesting granule {} ...".format(dr_file))
 
-        sounding_inputs['lat']['data'] = sounding_inputs['lat']['node'][:,:]
-        sounding_inputs['lon']['data'] = sounding_inputs['lon']['node'][:,:]
-        sounding_inputs['temp']['data'] = sounding_inputs['temp']['node'][level,:,:]
-        sounding_inputs['dwpt']['data'] = sounding_inputs['dwpt']['node'][level,:,:]
-        sounding_inputs['relh']['data'] = sounding_inputs['relh']['node'][level,:,:]
-        LOG.info("Copied the datasets from {}".format(dr_file))
+            # Open the file object
+            if h5py.is_hdf5(dr_file_list[grans]):
+                fileObj = h5py.File(dr_file,'r')
+            else:
+                LOG.error("{} does not exist or is not a valid HDF5 file, aborting...".\
+                        format(dr_file))
+                sys.exit(1)
 
-        LOG.info("Closing {}".format(dr_file))
-        fileObj.close()
+            # Open the dataset nodes for each of the required datasets
+            sounding_inputs['pres']['node'] = fileObj['Plevs']
+            sounding_inputs['temp']['node'] = fileObj['TAir']
+            sounding_inputs['dwpt']['node'] = fileObj['Dewpnt']
+            sounding_inputs['relh']['node'] = fileObj['RelHum']
+            sounding_inputs['wvap']['node'] = fileObj['H2OMMR']
+            sounding_inputs['lat']['node'] = fileObj['Latitude']
+            sounding_inputs['lon']['node'] = fileObj['Longitude']
 
-    except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(dr_file))
-        LOG.warn("{}".format(err))
-        LOG.debug(traceback.format_exc())
-        fileObj.close()
-        LOG.info("Exiting...")
-        sys.exit(1)
+            if first_granule:
+
+                # Get the pressure scale
+                pressure = sounding_inputs['pres']['node'][:]
+
+                #FIXME: All attributes for the DR datasets appear to be strings, 
+                #       whether the attribute value is a string or not. So we can't 
+                #       determine the attribute type from the file, we just have 
+                #       *know* it. Why bother with self-descibing file formats then?
+                for label in data_labels:
+                    if sounding_inputs[label] != None:
+                        LOG.info(">>> Processing {} ...".\
+                                format(sounding_inputs[label]['dset_name']))
+                        for attr_name in sounding_inputs[label]['node'].attrs.keys(): 
+                            attr = sounding_inputs[label]['node'].attrs[attr_name]
+                            LOG.debug("{} = {}".format(attr_name,np.squeeze(attr)))
+                            sounding_inputs[label][attr_name] = attr
+
+                # Search for the pressure level closest to the input value
+                pressure_scope = 10.
+                LOG.debug("Scope of pressure level search is {} hPa"
+                        .format(pressure_scope))
+                level = get_pressure_index(pressure,pres_0=pres_0,
+                        kd_dist=pressure_scope)
+                attempts = 1
+                while (level==None and attempts<10):
+                    pressure_scope *= 1.1
+                    LOG.debug("Scope of pressure level search is {} hPa"
+                            .format(pressure_scope))
+                    level = get_pressure_index(pressure,pres_0=pres_0,
+                            kd_dist=pressure_scope)
+                    attempts += 1
+
+                if level==None:
+                    raise Exception("No suitable pressure level found, aborting...")
+                     
+                LOG.debug("Retrieved level = {}".format(level))
+                sounding_inputs['pres_0'] = pressure[level]
+                data_labels.remove('pres')
+
+            # Add to the lat and lon and data arrays...
+            for label in ['lat','lon']:
+                try :
+                    sounding_inputs[label]['data']  = np.vstack((
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:]))
+                    LOG.debug("subsequent arrays...")
+                except KeyError :
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:]
+                    LOG.debug("first arrays...")
+
+                LOG.debug("Intermediate {} shape = {}".format(
+                    label,sounding_inputs[label]['data'].shape))
+
+            # Add to the temp, dewpoint, water vapour and relative humidity data arrays...
+            for label in ['temp','dwpt','wvap','relh']:
+                try :
+                    sounding_inputs[label]['data']  = np.vstack((
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][level,:,:]))
+                    LOG.debug("subsequent arrays...")
+                except KeyError :
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][level,:,:]
+                    LOG.debug("first arrays...")
+
+                LOG.debug("Intermediate {} shape = {}".format(
+                    label,sounding_inputs[label]['data'].shape))
+
+            first_granule = False
+
+            LOG.info("Closing {}".format(dr_file))
+            fileObj.close()
+
+        except Exception, err :
+            LOG.warn("There was a problem, closing {}".format(dr_file))
+            LOG.warn("{}".format(err))
+            LOG.debug(traceback.format_exc())
+            fileObj.close()
+            LOG.info("Exiting...")
+            sys.exit(1)
 
     # Contruct the pressure array
     pressure_array = pressure[level] * \
@@ -690,7 +822,7 @@ def dual_regression_sounder(dr_file,pres_0=850.):
     LOG.debug("pressure_array.shape =  {}".format(pressure_array.shape))
 
     # Construct the masks of the various datasets
-    for label in ['temp','dwpt','relh','lat','lon']:
+    for label in ['temp','dwpt','wvap','relh','lat','lon']:
         if sounding_inputs[label] != None:
             LOG.debug(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
             fill_value = float(sounding_inputs[label]['missing_value'][0])
@@ -710,11 +842,38 @@ def dual_regression_sounder(dr_file,pres_0=850.):
 
             sounding_inputs[label]['mask'] = data_mask
 
+    calc_relh = False
+    #calc_relh = True
+
+    if calc_relh:
+        # Computing the relative humidity
+        sounding_inputs['relh'] = {}
+        LOG.debug("wvap.shape =  {}".format(sounding_inputs['wvap']['data'].shape))
+        LOG.debug("temp.shape =  {}".format(sounding_inputs['temp']['data'].shape))
+
+        relh_mask = sounding_inputs['wvap']['mask']+sounding_inputs['temp']['mask']
+
+        wvap = ma.array(sounding_inputs['wvap']['data'],mask=relh_mask)
+        temp = ma.array(sounding_inputs['temp']['data'],mask=relh_mask)
+        pressure_array = ma.array(pressure_array,mask=relh_mask)
+
+        mr_to_rh_vec = np.vectorize(mr_to_rh)
+        rh = mr_to_rh_vec(wvap,pressure_array,temp).real
+
+        sounding_inputs['relh']['data'] = rh
+        sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
+                else np.zeros(temp.shape,dtype='bool')
+        sounding_inputs['relh']['units'] = '%'
+        sounding_inputs['relh']['long_name'] = 'Relative Humidity'
+
+        LOG.debug("ma.is_masked({}) = {}".format('relh',ma.is_masked(rh)))
+        LOG.debug("There are {}/{} masked values in relh".format(np.sum(rh.mask),rh.size))
+
 
     return sounding_inputs
 
 
-def nucaps_sounder(nucaps_file,pres_0=850.):
+def nucaps_sounder(nucaps_file_list,pres_0=850.):
     '''
     Pressure: Pressure for each layer in mb (hPa)
     Temperature: Temperature profile in K
@@ -786,74 +945,114 @@ def nucaps_sounder(nucaps_file,pres_0=850.):
     sounding_inputs['dwpt'] = None
     sounding_inputs['relh'] = None
 
-    # Open the file object
-    fileObj = Dataset(nucaps_file)
+    LOG.debug("Input file list: {}".format(nucaps_file_list))
 
-    try:
+    first_granule = True
 
-        sounding_inputs['pres']['node'] = fileObj.variables['Pressure']
-        sounding_inputs['temp']['node'] = fileObj.variables['Temperature']
-        sounding_inputs['wvap']['node'] = fileObj.variables['H2O_MR']
-        sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
-        sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
+    for grans in np.arange(len(nucaps_file_list)):
 
-        pressure = sounding_inputs['pres']['node'][0,:]
+        try:
 
-        # Fill in some missing attributes
-        sounding_inputs['pres']['units'] = 'hPa'
-        sounding_inputs['temp']['units'] = 'K'
-        sounding_inputs['wvap']['units'] = 'g/kg'
+            LOG.debug("Ingesting granule {} ...".format(grans))
 
-        for label in data_labels:
-            if sounding_inputs[label] != None:
-                LOG.info(">>> Processing {} ..."
-                        .format(sounding_inputs[label]['dset_name']))
-                for attr_name in sounding_inputs[label]['node'].ncattrs(): 
-                    attr = getattr(sounding_inputs[label]['node'],attr_name)
-                    LOG.debug("{} = {}".format(attr_name,attr))
-                    sounding_inputs[label][attr_name] = attr
+            nucaps_file = nucaps_file_list[grans]
+            LOG.debug("Ingesting granule {} ...".format(nucaps_file))
 
-        # Search for the pressure level closest to the input value
-        LOG.debug("Shape of pressure is {}".format(pressure.shape))
-        LOG.debug("pressure is {}".format(pressure))
+            # Open the file object
+            fileObj = Dataset(nucaps_file)
 
-        pressure_scope = 10.
-        LOG.debug("Scope of pressure level search is {} hPa"
-                .format(pressure_scope))
-        level = get_pressure_index(pressure,pres_0=pres_0,
-                kd_dist=pressure_scope)
-        attempts = 1
-        while (level==None and attempts<10):
-            pressure_scope *= 1.1
-            LOG.debug("Scope of pressure level search is {} hPa"
-                    .format(pressure_scope))
-            level = get_pressure_index(pressure,pres_0=pres_0,
-                    kd_dist=pressure_scope)
-            attempts += 1
+            # Open the dataset nodes for each of the required datasets
+            sounding_inputs['pres']['node'] = fileObj.variables['Pressure']
+            sounding_inputs['temp']['node'] = fileObj.variables['Temperature']
+            sounding_inputs['wvap']['node'] = fileObj.variables['H2O_MR']
+            sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
+            sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
 
-        if level==None:
-            raise Exception("No suitable pressure level found, aborting...")
-             
-        LOG.debug("Retrieved level = {}".format(level))
-        sounding_inputs['pres_0'] = pressure[level]
-        #row,col = 10,10
+            # Fill in some missing attributes
+            sounding_inputs['pres']['units'] = 'hPa'
+            sounding_inputs['temp']['units'] = 'K'
+            sounding_inputs['wvap']['units'] = 'g/kg'
 
-        sounding_inputs['lat']['data'] = sounding_inputs['lat']['node'][:].reshape(4,30)
-        sounding_inputs['lon']['data'] = sounding_inputs['lon']['node'][:].reshape(4,30)
-        sounding_inputs['temp']['data'] = sounding_inputs['temp']['node'][:,level].reshape(4,30)
-        # Convert water vapor from g/g to g/kg
-        sounding_inputs['wvap']['data'] = 1000.*sounding_inputs['wvap']['node'][:,level].reshape(4,30)
+            if first_granule:
 
-        LOG.info("Closing {}".format(nucaps_file))
-        fileObj.close()
+                # Get the pressure scale
+                pressure = sounding_inputs['pres']['node'][0,:]
 
-    except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(nucaps_file))
-        LOG.warn("{}".format(err))
-        LOG.debug(traceback.format_exc())
-        fileObj.close()
-        LOG.info("Exiting...")
-        sys.exit(1)
+                for label in data_labels:
+                    if sounding_inputs[label] != None:
+                        LOG.info(">>> Processing {} ..."
+                                .format(sounding_inputs[label]['dset_name']))
+                        for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                            attr = getattr(sounding_inputs[label]['node'],attr_name)
+                            LOG.debug("{} = {}".format(attr_name,attr))
+                            sounding_inputs[label][attr_name] = attr
+
+
+                # Search for the pressure level closest to the input value
+                pressure_scope = 10.
+                LOG.debug("Scope of pressure level search is {} hPa"
+                        .format(pressure_scope))
+                level = get_pressure_index(pressure,pres_0=pres_0,
+                        kd_dist=pressure_scope)
+                attempts = 1
+                while (level==None and attempts<10):
+                    pressure_scope *= 1.1
+                    LOG.debug("Scope of pressure level search is {} hPa"
+                            .format(pressure_scope))
+                    level = get_pressure_index(pressure,pres_0=pres_0,
+                            kd_dist=pressure_scope)
+                    attempts += 1
+
+                if level==None:
+                    raise Exception("No suitable pressure level found, aborting...")
+                 
+                LOG.debug("Retrieved level = {}".format(level))
+                sounding_inputs['pres_0'] = pressure[level]
+                data_labels.remove('pres')
+
+            # Add to the lat and lon and data arrays...
+            for label in ['lat','lon']:
+                try :
+                    sounding_inputs[label]['data']  = np.vstack((
+                        sounding_inputs[label]['data'],
+                        sounding_inputs[label]['node'][:].reshape(4,30)))
+                    LOG.debug("subsequent arrays...")
+                except KeyError :
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:].reshape(4,30)
+                    LOG.debug("first arrays...")
+
+                LOG.debug("Intermediate {} shape = {}".format(
+                    label,sounding_inputs[label]['data'].shape))
+
+            # Add to the temp, dewpoint, water vapour and relative humidity data arrays...
+            for label in ['temp','wvap']:
+                try :
+                    sounding_inputs[label]['data']  = np.vstack((
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,level].reshape(4,30)))
+                    LOG.debug("subsequent arrays...")
+                except KeyError :
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,level].reshape(4,30)
+                    LOG.debug("first arrays...")
+
+                LOG.debug("Intermediate {} shape = {}".format(
+                    label,sounding_inputs[label]['data'].shape))
+
+            first_granule = False
+
+            LOG.info("Closing {}".format(nucaps_file))
+            fileObj.close()
+
+        except Exception, err :
+            LOG.warn("There was a problem, closing {}".format(nucaps_file))
+            LOG.warn("{}".format(err))
+            LOG.debug(traceback.format_exc())
+            fileObj.close()
+            LOG.info("Exiting...")
+            sys.exit(1)
+
+
+    # Convert water vapor from g/g to g/kg
+    sounding_inputs['wvap']['data'] = 1000.*sounding_inputs['wvap']['data']
 
     # Contruct the pressure array
     pressure_array = pressure[level] * \
@@ -1172,7 +1371,7 @@ def _argparse():
     version = __version__
 
     parser = argparse.ArgumentParser(
-                                     version=version,
+                                     #version=version,
                                      description=description
                                      )
 
@@ -1182,7 +1381,8 @@ def _argparse():
                       action='store',
                       dest='input_file',
                       type=str,
-                      help='''The fully qualified path to a single level-1d input file.'''
+                      help='''The fully qualified path to the input file(s). May 
+                              be a file glob (which should be in quotes).'''
                       )
 
     parser.add_argument(
@@ -1356,22 +1556,29 @@ def _argparse():
                       [default: {}]""".format(defaults["outputFilePrefix"])
                       )
 
-    parser.add_argument("-z", "--verbose",
+    parser.add_argument("-v", "--verbose",
                       dest='verbosity',
                       action="count", 
-                      default=0,
+                      default=2,
                       help='''each occurrence increases verbosity 1 level from 
-                      ERROR: -z=WARNING -zz=INFO -zzz=DEBUG'''
+                      INFO. -v=DEBUG'''
                       )
 
+    parser.add_argument("-q", "--quiet",
+                      action="store_true",
+                      dest='quiet',
+                      default=False,
+                      help='''Silence all output'''
+                      )
 
     args = parser.parse_args()
 
     # Set up the logging
+    verbosity = 0 if args.quiet else args.verbosity
     console_logFormat = '%(asctime)s : (%(levelname)s):%(filename)s:%(funcName)s:%(lineno)d:  %(message)s'
     dateFormat = '%Y-%m-%d %H:%M:%S'
     levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
-    logging.basicConfig(level = levels[args.verbosity], 
+    logging.basicConfig(level = levels[verbosity], 
             format = console_logFormat, 
             datefmt = dateFormat)
 
@@ -1408,20 +1615,30 @@ def main():
     outputFilePrefix  = options.outputFilePrefix
     dpi = options.dpi
 
-    
+    # Obtain matched lists of the geolocation and product files
+    input_file_list = granuleFiles(input_file)
+
+    if input_file_list==[]:
+        LOG.warn('No files match the input file glob "{}", aborting.'
+                .format(input_file))
+        sys.exit(1)
+
+
+    LOG.info("input file(s): {}".format(input_file_list))
+
     # Read in the input file, and return a dictionary containing the required
     # data
 
     dataChoices=['IAPP','MIRS','DR','NUCAPS']
 
     if datatype == 'IAPP' :
-        sounding_inputs = iapp_sounder(input_file,pres_0=pressure)
+        sounding_inputs = iapp_sounder(input_file_list,pres_0=pressure)
     elif datatype == 'MIRS' :
-        sounding_inputs = mirs_sounder(input_file,pres_0=pressure)
+        sounding_inputs = mirs_sounder(input_file_list,pres_0=pressure)
     elif datatype == 'DR' :
-        sounding_inputs = dual_regression_sounder(input_file,pres_0=pressure)
+        sounding_inputs = dual_regression_sounder(input_file_list,pres_0=pressure)
     elif datatype == 'NUCAPS' :
-        sounding_inputs = nucaps_sounder(input_file,pres_0=pressure)
+        sounding_inputs = nucaps_sounder(input_file_list,pres_0=pressure)
     else:
         pass
 
@@ -1433,7 +1650,7 @@ def main():
 
     pres_0 = int(sounding_inputs['pres_0'])
 
-    input_file = path.basename(input_file)
+    input_file = path.basename(input_file_list[0])
 
     cbar_titles = {
             'temp':'temperature (K) @ {:4.2f} hPa'.format(pres_0),
