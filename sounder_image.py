@@ -1568,7 +1568,7 @@ def _argparse():
                       action="store_true",
                       dest='quiet',
                       default=False,
-                      help='''Silence all output'''
+                      help='''Silence all console output'''
                       )
 
     args = parser.parse_args()
@@ -1578,7 +1578,8 @@ def _argparse():
     console_logFormat = '%(asctime)s : (%(levelname)s):%(filename)s:%(funcName)s:%(lineno)d:  %(message)s'
     dateFormat = '%Y-%m-%d %H:%M:%S'
     levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
-    logging.basicConfig(level = levels[verbosity], 
+    level = levels[min(verbosity,3)]
+    logging.basicConfig(level = level, 
             format = console_logFormat, 
             datefmt = dateFormat)
 

@@ -909,7 +909,7 @@ def _argparse():
     version = __version__
 
     parser = argparse.ArgumentParser(
-                                     version=version,
+                                     #version=version,
                                      description=description
                                      )
 
@@ -996,22 +996,30 @@ def _argparse():
                       [default: {}]""".format(defaults["outputFilePrefix"])
                       )
 
-    parser.add_argument("-z", "--verbose",
+    parser.add_argument("-v", "--verbose",
                       dest='verbosity',
                       action="count", 
-                      default=0,
+                      default=2,
                       help='''each occurrence increases verbosity 1 level from 
-                      ERROR: -z=WARNING -zz=INFO -zzz=DEBUG'''
+                      INFO. -v=DEBUG'''
                       )
 
-
+    parser.add_argument("-q", "--quiet",
+                      action="store_true",
+                      dest='quiet',
+                      default=False,
+                      help='''Silence all console output'''
+                      )
+     
     args = parser.parse_args()
 
     # Set up the logging
+    verbosity = 0 if args.quiet else args.verbosity
     console_logFormat = '%(asctime)s : (%(levelname)s):%(filename)s:%(funcName)s:%(lineno)d:  %(message)s'
     dateFormat = '%Y-%m-%d %H:%M:%S'
     levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
-    logging.basicConfig(level = levels[args.verbosity], 
+    level = levels[min(verbosity,3)]
+    logging.basicConfig(level = level, 
             format = console_logFormat, 
             datefmt = dateFormat)
 

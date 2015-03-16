@@ -33,4 +33,3 @@ if [ -z "$1" ]; then
 fi
 
 $PY $CSPP_SOUNDER_QL_HOME/sounder_ql/sounder_profile.py  -zz "$@"
-

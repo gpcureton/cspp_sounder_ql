@@ -508,5 +508,3 @@ def DewPoint(e):
     ln_ratio=log(e/611.2)
     Td=((17.67-ln_ratio)*degCtoK+243.5*ln_ratio)/(17.67-ln_ratio)
     return Td-degCtoK
-
-
