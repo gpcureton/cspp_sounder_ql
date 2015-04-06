@@ -97,18 +97,19 @@ cd ..
 Set up the run environment...
 
 ```bash
-export CSPP_SOUNDER_QL_HOME=./CSPP/Sounder_ql
+export CSPP_SOUNDER_QL_HOME=$(readlink -f Sounder_QL_1_0)
 . $CSPP_SOUNDER_QL_HOME/cspp_sounder_ql_env.sh
 ```
 
 The CSPP-Sounder-QL package is now ready to use, and test data files are included in the
-`CSPP_Sounder_QL_v1.0/Work/sample_data` directory.
+`Sounder_QL_1_0/input` and `Sounder_QL_1_0/truth_output` directories.
+
 
 In order to test the installation, execute the main driver scripts now with no arguments:
 
 ```bash
-$CSPP_SOUNDER_QL_HOME/sounder_ql/ql_level2_image.sh
-$CSPP_SOUNDER_QL_HOME/sounder_ql/ql_level2_skewt.sh
+$CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh
+$CSPP_SOUNDER_QL_HOME/scripts/ql_level2_skewt.sh
 ```
 
 If the installation has been successful to this point, you will be presented with command line
@@ -123,23 +124,23 @@ When installed as shown in section 2.2, the directory/file structure of CSPP-Sou
 (pruned for the purposes of this document) is:
 
 ```
-CSPP_Sounder_QL_v1.0/CSPP/Sounder_ql
-                            │
-                            ├── cspp_sounder_ql_env.sh
-                            ├── cspp_sounder_ql_runtime.sh
-                            ├── cspp_sounder_ql_unset.sh
-                            │
-                            ├── common
-                            │   ├── cspp_cfg
-                            │   └── ShellB3
-                            │
-                            └── sounder_ql
-                                ├── ql_level2_image.sh
-                                ├── ql_level2_skewt.sh
-                                ├── sounder_image.py
-                                ├── sounder_skewt.py
-                                ├── skewt.py
-                                └── thermo.py
+Sounder_QL_1_0
+            │
+            ├── cspp_sounder_ql_env.sh
+            ├── cspp_sounder_ql_runtime.sh
+            ├── cspp_sounder_ql_unset.sh
+            │
+            ├── common
+            │   ├── cspp_cfg
+            │   └── ShellB3
+            │
+            └── scripts
+                ├── ql_level2_image.sh
+                ├── ql_level2_skewt.sh
+                ├── sounder_image.py
+                ├── sounder_skewt.py
+                ├── skewt.py
+                └── thermo.py
 ```
 
 ## Using CSPP-Sounder-QL
@@ -152,8 +153,14 @@ which contains the logic to ingest the various level-2 product type, and plot ei
 temperature, dewpoint or relative humidity. The script `ql_level2_image.sh` requires, at a
 minimum, the name of the input level-2 file, and the type of the input sounder file, in that order...
 
+The bash script `ql_level2_image.sh` checks for environment variable `CSPP_SOUNDER_QL_HOME`
+and then invokes the Python script `$CSPP_SOUNDER_QL_HOME/scripts/sounder_image.py`, which
+contains the logic to ingest the various level-2 product type, and plot either the navigated
+temperature, dewpoint or relative humidity. The script `ql_level2_image.sh` requires, at a
+minimum, the name of the input level-2 file, and the type of the input sounder file, in that order...
+
 ```bash
-bash $CSPP_SOUNDER_QL_HOME/sounder_ql/ql_level2_image.sh FILE FILE_TYPE
+bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh FILE FILE_TYPE`
 ```
 
 Various command line options are available for ql_level2_image.sh as shown below:

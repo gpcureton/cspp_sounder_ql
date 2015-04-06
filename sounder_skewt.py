@@ -1060,6 +1060,8 @@ def main():
     else:
         pass
 
+    input_file = path.basename(input_file)
+
     # Determine the filename
     file_suffix = "{}_SkewT".format(datatype)
 

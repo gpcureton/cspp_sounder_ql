@@ -1341,7 +1341,7 @@ def _argparse():
     import argparse
 
     dataChoices=['IAPP','MIRS','DR','NUCAPS']
-    prodChoices=['temp','dwpt','relh']
+    prodChoices=['temp','wvap','dwpt','relh']
     map_res_choice = ['c','l','i']
 
     defaults = {
@@ -1655,6 +1655,7 @@ def main():
 
     cbar_titles = {
             'temp':'temperature (K) @ {:4.2f} hPa'.format(pres_0),
+            'wvap':'water vapor mixing ratio (g/kg) @ {:4.2f} hPa'.format(pres_0),
             'dwpt':'dewpoint temperature (K) @ {:4.2f} hPa'.format(pres_0),
             'relh':'relative humidity (%) @ {:4.2f} hPa'.format(pres_0)
             }

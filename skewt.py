@@ -450,7 +450,7 @@ def plot_skewt_OO(p,h,T,Td, fig=None, ax=None, **kwargs):
 
     if fig is None:
         LOG.debug("Creating the figure and canvas...")
-        fig = Figure(figsize=(8., 6.))
+        fig = Figure(figsize=(8., 8.))
         canvas = FigureCanvas(fig)
         #fig.clf()
     if ax is None:
