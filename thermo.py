@@ -6,7 +6,7 @@ thermo.py
 Various thermodynamic relationship for ice and water.
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2009-04-04.
-Copyright (c) 2009-2013 University of Wisconsin Regents. All rights reserved.
+Copyright (c) 2009-2015 University of Wisconsin Regents. All rights reserved.
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -33,7 +33,8 @@ __version__ = '$Id$'
 __docformat__ = 'Epytext'
 
 from scipy import log10
-from numpy import interp,pi,cos,sin,arctan2,sqrt,linspace,min,exp,log,where
+from numpy import pi,cos,sin,arctan2,sqrt,exp,log
+from numpy import min,max,minimum,maximum,where,interp,linspace
 
 #-----------------------------------------------------------------------
 # Here we go. A set of functions that I use from time to time to calculate 
@@ -128,34 +129,33 @@ def satmixice( p, t) :
 
 
 def svpwat(t) :
-	'''
-	Returns saturation vapor pressure over water, in hPa, given temperature in K.
-	
-	'''
+    '''
+    Returns saturation vapor pressure over water, in hPa, given temperature in K.
+    '''
 
-	a0 =  0.999996876e0
-	a1 = -0.9082695004e-2
-	a2 =  0.7873616869e-4
-	a3 = -0.6111795727e-6
-	a4 =  0.4388418740e-8
-	a5 = -0.2988388486e-10
-	a6 =  0.2187442495e-12
-	a7 = -0.1789232111e-14
-	a8 =  0.1111201803e-16
-	a9 = -0.3099457145e-19
-	b = 0.61078e+1
-	t -= 273.16
-	return (b / ((a0+t*(a1+t*(a2+t*(a3+t*(a4+t*(a5+t*(a6+t*(a7+t*(a8+t*a9)))))))))**8.))
+    a0 =  0.999996876e0
+    a1 = -0.9082695004e-2
+    a2 =  0.7873616869e-4
+    a3 = -0.6111795727e-6
+    a4 =  0.4388418740e-8
+    a5 = -0.2988388486e-10
+    a6 =  0.2187442495e-12
+    a7 = -0.1789232111e-14
+    a8 =  0.1111201803e-16
+    a9 = -0.3099457145e-19
+    b = 0.61078e+1
+    t -= 273.16
+    return (b / ((a0+t*(a1+t*(a2+t*(a3+t*(a4+t*(a5+t*(a6+t*(a7+t*(a8+t*a9)))))))))**8.))
 
 def svpice( t) :
-	'''
-	Returns saturation vapor pressure over ice, in hPa, given temperature in K.
-	The Goff-Gratch equation (Smithsonian Met. Tables,  5th ed., pp. 350, 1984)
-	'''
-	a = 273.16 / t
-	exponent = -9.09718 * (a - 1.) - 3.56654 * log10(a) + 0.876793 * (1. - 1./a) + log10(6.1071)
+    '''
+    Returns saturation vapor pressure over ice, in hPa, given temperature in K.
+    The Goff-Gratch equation (Smithsonian Met. Tables,  5th ed., pp. 350, 1984)
+    '''
+    a = 273.16 / t
+    exponent = -9.09718 * (a - 1.) - 3.56654 * log10(a) + 0.876793 * (1. - 1./a) + log10(6.1071)
 
-	return 10.0**exponent
+    return 10.0**exponent
 
 
 def dewpoint_magnus(T,RH) :
@@ -268,6 +268,7 @@ def Theta(tempk,pres,pref=100000.):
 
     return tempk*(pref/pres)**(Rs_da/Cp_da)
 
+
 def TempK(theta,pres,pref=100000.):
     """Inverts Theta function."""
 
@@ -280,6 +281,7 @@ def TempK(theta,pres,pref=100000.):
         print "WARNING: P<2000 Pa; did you input a value in hPa?"
 
     return theta*(pres/pref)**(Rs_da/Cp_da)
+
 
 def ThetaE():
     """Equivalent potential temperature"""
@@ -299,6 +301,7 @@ def ThetaV(tempk,pres,e):
     theta=Theta(tempk,pres)
 
     return theta*(1+mixr/Epsilon)/(1+mixr)
+
 
 def GammaW(tempk,pres,e=None):
     """Function to calculate the moist adiabatic lapse rate (deg C/Pa) based
@@ -331,6 +334,7 @@ def GammaW(tempk,pres,e=None):
     Rho=pres/(Rs_da*tempv)
     Gamma=(A/B)/(Cp_da*Rho)
     return Gamma
+
 
 def DensityHumid(tempk,pres,e):
     """Density of moist air.
@@ -403,6 +407,7 @@ def VirtualTempFromMixR(tempk,mixr):
 
     return tempk*(1.0+0.6*mixr)
 
+
 def Latentc(tempc):
     """Latent heat of condensation (vapourisation)
 
@@ -417,6 +422,7 @@ def Latentc(tempc):
     """
    
     return 1000*(2500.8 - 2.36*tempc + 0.0016*tempc**2 - 0.00006*tempc**3)
+
 
 def SatVap(tempc,phase="liquid"):
     """Calculate saturation vapour pressure over liquid water and/or ice.
@@ -508,3 +514,170 @@ def DewPoint(e):
     ln_ratio=log(e/611.2)
     Td=((17.67-ln_ratio)*degCtoK+243.5*ln_ratio)/(17.67-ln_ratio)
     return Td-degCtoK
+
+
+#
+# Code from Nadia Smith and E. Weisz, which originated from
+# Hal Woolf.
+#
+
+def svpwat(temp):
+
+    """
+    -----------------------------------------------------
+     Calculate saturation vapor pressure over water given 
+     a certain temperature
+    -------------------------------------------------------
+     input:  temperature in Kelvin or degrees Celsius
+     output: saturation vapor pressure at given temp over water in  mb or hPa
+    -----------------------------------------------------
+     NOTE: Due to the prevalence of the super-cooling phenomenon
+     in clouds and upper atmosphere relative humidity is calculated 
+     for conditions over water irrespective of the temperature. 
+     This is according to WMO standards.
+     Consequently, the vp threshold was lowered from 0.636d-1 to 0.1403d-4
+    
+     REFERENCE: Hardy, Bob, "ITS-90 Formulations of ..." Papers and
+     Abstracts from teh Third International Symposium on Humidity &
+     Moisture, London, England, April 1998, vol. 1, 214-222.
+    -------------------------------------------------------
+
+    python version of Hal Woolf's fortran code 'svpwat.f'
+    
+    """
+
+    tref=273.15
+
+    a0 =  0.999996876e0
+    a1 = -0.9082695004e-2
+    a2 =  0.7873616869e-4
+    a3 = -0.6111795727e-6
+    a4 =  0.4388418740e-8
+    a5 = -0.2988388486e-10
+    a6 =  0.2187442495e-12
+    a7 = -0.1789232111e-14
+    a8 =  0.1111201803e-16
+    a9 = -0.3099457145e-19
+    b  =  0.61078e+1
+
+    t = temp
+
+    if (t > 100.):
+        t = t - tref
+
+    s = a0 + t*(a1+t*(a2+t*(a3+t*(a4+t*(a5+t*(a6+t*(a7+t*(a8+t*a9))))))))
+    s = b / (s**8)
+
+    return s
+
+
+def tsvwat(press):
+    """
+    -----------------------------------------------------
+     Calculates temperature [K] at given saturation vapor pressure [hPa] 
+     zero is returned if the given vapor pressure is out of range
+    -------------------------------------------------------
+     input: saturation vapor pressure [hPa]
+     output: temperature at which saturation vapor pressure occur over water (not ice)
+    -----------------------------------------------------
+     NOTE: Due to the prevalence of the super-cooling phenomenon
+     in clouds the upper atmosphere relative humidity is calculated 
+     for conditions over water irrespective of the temperature. 
+     This is according to WMO standards.
+     Consequently, the vp threshold was lowered from 0.636d-1 to 0.1403d-4
+
+     REFERENCE: Hardy, Bob, "ITS-90 Formulations of ..." Papers and
+     Abstracts from teh Third International Symposium on Humidity &
+     Moisture, London, England, April 1998, vol. 1, 214-222.
+    -------------------------------------------------------
+    
+    matlab version of Hal Woolf's fortran code 'tsvwat.f'
+    
+    ------------------------------------------------------------
+    """
+
+    a0 = -0.225896152438e+2
+    a1 =  0.261012286592e+2
+    a2 =  0.30206720594e+1
+    a3 =  0.370219024579e+0
+    a4 =  0.72838702401e-1
+
+    vp=press
+
+    # original:  if (vp > 0.636d-1 & vp < 0.1233972d+3) 
+    if (vp > 0.1403e-4 and vp < 0.1233972e+3):
+        vp = log10(vp)
+        t = a0 + vp*(a1+vp*(a2+vp*(a3+vp*a4)))
+        ts = t + 273.16
+    else :
+        ts=0.
+
+    return ts
+
+
+def sat_mr_water(p,t):
+    """
+    * Get saturation mixing ratio over water from press, temp
+    
+    input: pressure in mbar,hPa
+    input: temperature in Kelvin, deg C
+
+    returns: saturation water vapour mixing ratio in g/kg
+    """
+
+    es = svpwat(t)
+
+    ws = 621.946*es/p  # saturation MR [g/kg]
+
+    return ws
+
+
+def dewhum(p,t,w):
+    """
+    * Computes relative humidity [%] from wv
+    * Checks for oversaturation and return corrected wv values
+    * Calculates dewpoint temperature
+
+    NOTE: Due to the prevalence of the super-cooling phenomenon
+    in clouds and upper atmosphere relative humidity is calculated 
+    for conditions over water irrespective of the temperature. 
+    This is according to WMO standards.
+
+    REFERENCE: Hardy, Bob, "ITS-90 Formulations of ..." Papers and
+    Abstracts from teh Third International Symposium on Humidity &
+    Moisture, London, England, April 1998, vol. 1, 214-222.
+
+    * Get dewpoint and relative humidity from press, temp, wvmr
+    .... version of 22.04.98
+    
+    python version of Hal Woolf's fortran code 'dewhum.f'
+    
+    -----------------------------------------------------------
+    
+    input: pressure in mbar,hPa
+    input: temperature in Kelvin, deg C
+    input: water vapor mixing ratio in g/kg
+
+    returns: dewpoint temperature in Kelvin
+    returns: relative humidity 
+    returns: water vapour mixing ratio in g/kg
+    """
+
+    tt = t
+
+    es = svpwat(tt)
+
+    ws = 621.946*es/p  # saturation MR [g/kg]
+
+    w = minimum(w,ws) # if input w is over-saturated set to saturation value
+
+    hh = w/ws
+
+    h = hh * 100. # RH
+
+    ee = hh * es # partial vapor pressure [mbar], = (w(i)/622)*p(i)
+
+    d = tsvwat(ee)
+
+    return d, h, w
+

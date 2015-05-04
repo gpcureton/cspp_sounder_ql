@@ -8,7 +8,7 @@ Purpose: Create a Skew-T plot from a range of input data. Supports outputs from
          
          * International ATOVS Processing Package (IAPP)
          * Microwave Integrated Retrieval System (MIRS)
-         * CSPP Hyperspectral Retrieval (Dual Regression) Package
+         * CSPP Hyperspectral Retrieval (HSRTV) Package
          * NOAA Unique CrIS/ATMS Product System (NUCAPS)
 
 Preconditions:
@@ -28,7 +28,7 @@ where...
     INPUTFILES: The fully qualified path to the input files. May be a 
     directory or a file glob.
 
-    DATATYPE: One of 'IAPP','MIRS', 'DR' or 'NUCAPS'.
+    DATATYPE: One of 'IAPP','MIRS', 'HSRTV' or 'NUCAPS'.
 
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2014-05-10.
@@ -94,8 +94,7 @@ from netCDF4 import num2date
 import h5py
 
 import skewt as skT
-from thermo import mr_to_rh, rh_to_mr, dewpoint_magnus, dewpoint_AB
-from thermo import MixR2VaporPress, DewPoint
+from thermo import dewhum
 
 # every module should have a LOG object
 LOG = logging.getLogger(__file__)
@@ -123,26 +122,27 @@ def uwyoming():
     for key in sounding_keys:
         sounding_inputs[key] = sounding[key]
 
-    #sounding.plot_skewt(color='r',lw=2)
-    #ppl.show(block=False)
-
-    #sounding.make_skewt_axes()
-    #sounding.add_profile(color='r',lw=2)
-    #sounding.lift_parcel(1004.,17.4,8.6)
-    #ppl.draw()
-    #ppl.show(block=False)
-
-    #sounding.make_skewt_axes()
-    #sounding.add_profile(color='r',lw=2)
-    #parcel=sounding.surface_parcel(mixdepth=100.)
-    #sounding.lift_parcel(*parcel)
-    #ppl.draw()
-    #ppl.show(block=False)
-
-    #sounding.plot_skewt(color='r',lw=2)
-    #ppl.show(block=False)
-
     return sounding_inputs
+
+
+def granuleFiles(prodGlob):
+    '''
+    Returns sorted lists of the geolocation and product files.
+    '''
+    
+    prodDir = path.dirname(path.abspath(path.expanduser(prodGlob)))
+
+    LOG.debug("Initial prodGlob = {}".format(prodGlob))
+
+    prodGlob = path.basename(path.abspath(path.expanduser(prodGlob)))
+
+    LOG.debug("prodDir = {}".format(prodDir))
+    LOG.debug("prodGlob = {}".format(prodGlob))
+
+    prodList = glob("%s/%s" % (prodDir,prodGlob))
+    prodList.sort()
+    
+    return prodList
 
 
 def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
@@ -215,7 +215,7 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
     return row,col
 
 
-def iapp_sounder(iapp_file,lat_0=None,lon_0=None):
+def iapp_sounder(iapp_file_list,lat_0=None,lon_0=None):
     '''
     Pressure_Levels: Pressure for each level in mb (hPa)
     Temperature_Retrieval: Temperature profile in K
@@ -280,6 +280,9 @@ def iapp_sounder(iapp_file,lat_0=None,lon_0=None):
     sounding_inputs['lon']['dset_name']  = 'Longitude'
     sounding_inputs['relh'] = None
 
+    LOG.debug("Input file list: {}".format(iapp_file_list))
+
+    iapp_file = iapp_file_list[0]
 
     # Open the file object
     fileObj = Dataset(iapp_file)
@@ -315,6 +318,7 @@ def iapp_sounder(iapp_file,lat_0=None,lon_0=None):
         #row,col = 10,10
 
         sounding_inputs['pres']['data'] = sounding_inputs['pres']['node'][:]
+
         sounding_inputs['temp']['data'] = sounding_inputs['temp']['node'][row,col,:]
         sounding_inputs['dwpt']['data'] = sounding_inputs['dwpt']['node'][row,col,:]
         sounding_inputs['wvap']['data'] = sounding_inputs['wvap']['node'][row,col,:]
@@ -355,12 +359,13 @@ def iapp_sounder(iapp_file,lat_0=None,lon_0=None):
 
     # Computing the relative humidity
     sounding_inputs['relh'] = {}
-    mr_to_rh_vec = np.vectorize(mr_to_rh)
-    rh = mr_to_rh_vec(
-            sounding_inputs['wvap']['data'],
+    dewhum_vec = np.vectorize(dewhum)
+    _,rh,_ = dewhum_vec(
             sounding_inputs['pres']['data'],
-            sounding_inputs['temp']['data']
+            sounding_inputs['temp']['data'],
+            sounding_inputs['wvap']['data']
             )
+
     sounding_inputs['relh']['data'] = rh
     sounding_inputs['relh']['units'] = '%'
     sounding_inputs['relh']['long_name'] = 'Relative Humidity'
@@ -368,7 +373,7 @@ def iapp_sounder(iapp_file,lat_0=None,lon_0=None):
     return sounding_inputs
 
 
-def mirs_sounder(mirs_file,lat_0=None,lon_0=None):
+def mirs_sounder(mirs_file_list,lat_0=None,lon_0=None):
     '''
     Player: Pressure for each layer in mb (hPa)
     PTemp: Temperature profile in K
@@ -416,6 +421,12 @@ def mirs_sounder(mirs_file,lat_0=None,lon_0=None):
     sounding_inputs['dwpt'] = None
     sounding_inputs['relh'] = None
 
+    LOG.debug("Input file list: {}".format(mirs_file_list))
+
+    mirs_file = mirs_file_list[0]
+
+    first_granule = True
+
     # Open the file object
     fileObj = Dataset(mirs_file)
 
@@ -447,8 +458,8 @@ def mirs_sounder(mirs_file,lat_0=None,lon_0=None):
                     sounding_inputs[label][attr_name] = attr
 
         row,col = get_geo_indices(lat,lon,lat_0=lat_0,lon_0=lon_0)
+
         if row==None or col==None:
-            #LOG.error("Specified coordinates not found, aborting...")
             raise Exception("No suitable lat/lon coordinates found, aborting...")
              
         LOG.debug("Retrieved row,col = {},{}".format(row,col))
@@ -495,32 +506,27 @@ def mirs_sounder(mirs_file,lat_0=None,lon_0=None):
             sounding_inputs[label]['data'] = ma.array(data,mask=data_mask)
 
     # Computing the relative humidity
-    sounding_inputs['relh'] = {}
-    mr_to_rh_vec = np.vectorize(mr_to_rh)
-    rh = mr_to_rh_vec(
-            sounding_inputs['wvap']['data'],
-            sounding_inputs['pres']['data'],
-            sounding_inputs['temp']['data']
-            )
-    sounding_inputs['relh']['data'] = rh
-    sounding_inputs['relh']['units'] = '%'
-    sounding_inputs['relh']['long_name'] = 'Relative Humidity'
-
-    dewpoint_AB_vec = np.vectorize(dewpoint_AB)
     sounding_inputs['dwpt'] = {}
-    dwpt = dewpoint_AB_vec(
+    sounding_inputs['relh'] = {}
+    dewhum_vec = np.vectorize(dewhum)
+    dwpt,rh,_ = dewhum_vec(
+            sounding_inputs['pres']['data'],
             sounding_inputs['temp']['data'],
-            sounding_inputs['relh']['data']
-            ) + 273.15
+            sounding_inputs['wvap']['data']
+            )
 
     sounding_inputs['dwpt']['data'] = dwpt
     sounding_inputs['dwpt']['units'] = 'K'
     sounding_inputs['dwpt']['long_name'] = 'Dew-point Temperature profile in K'
 
+    sounding_inputs['relh']['data'] = rh
+    sounding_inputs['relh']['units'] = '%'
+    sounding_inputs['relh']['long_name'] = 'Relative Humidity'
+
     return sounding_inputs
 
 
-def dual_regression_sounder(dr_file,lat_0=None,lon_0=None):
+def hsrtv_sounder(hsrtv_file_list,lat_0=None,lon_0=None):
     '''
     Plevs: Pressure for each level in mb (hPa)
     TAir: Retrieved temperature profile at 101 levels (K)
@@ -557,13 +563,18 @@ def dual_regression_sounder(dr_file,lat_0=None,lon_0=None):
     sounding_inputs['lat']['dset_name']  = 'Latitude'
     sounding_inputs['lon']['dset_name']  = 'Longitude'
 
+    LOG.debug("Input file list: {}".format(hsrtv_file_list))
+
+    hsrtv_file = hsrtv_file_list[0]
+
+    first_granule = True
 
     # Open the file object
-    if h5py.is_hdf5(dr_file):
-        fileObj = h5py.File(dr_file,'r')
+    if h5py.is_hdf5(hsrtv_file):
+        fileObj = h5py.File(hsrtv_file,'r')
     else:
         LOG.error("{} does not exist or is not a valid HDF5 file, aborting...".\
-                format(dr_file))
+                format(hsrtv_file))
         sys.exit(1)
 
     try:
@@ -579,7 +590,7 @@ def dual_regression_sounder(dr_file,lat_0=None,lon_0=None):
         lat = sounding_inputs['lat']['node'][:,:]
         lon = sounding_inputs['lon']['node'][:,:]
 
-        #FIXME: All attributes for the DR datasets appear to be strings, 
+        #FIXME: All attributes for the HSRTV datasets appear to be strings, 
         #       whether the attribute value is a string or not. So we can't 
         #       determine the attribute type from the file, we just have 
         #       *know* it. Why bother with self-descibing file formats then?
@@ -608,11 +619,11 @@ def dual_regression_sounder(dr_file,lat_0=None,lon_0=None):
         sounding_inputs['wvap']['data'] = sounding_inputs['wvap']['node'][:,row,col]
         sounding_inputs['relh']['data'] = sounding_inputs['relh']['node'][:,row,col]
 
-        LOG.info("Closing {}".format(dr_file))
+        LOG.info("Closing {}".format(hsrtv_file))
         fileObj.close()
 
     except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(dr_file))
+        LOG.warn("There was a problem, closing {}".format(hsrtv_file))
         LOG.warn("{}".format(err))
         LOG.debug(traceback.format_exc())
         fileObj.close()
@@ -647,7 +658,7 @@ def dual_regression_sounder(dr_file,lat_0=None,lon_0=None):
     return sounding_inputs
 
 
-def nucaps_sounder(nucaps_file,lat_0=None,lon_0=None):
+def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
     '''
     Pressure: Pressure for each layer in mb (hPa)
     Temperature: Temperature profile in K
@@ -719,7 +730,12 @@ def nucaps_sounder(nucaps_file,lat_0=None,lon_0=None):
     sounding_inputs['dwpt'] = None
     sounding_inputs['relh'] = None
 
+    LOG.debug("Input file list: {}".format(nucaps_file_list))
+
+    first_granule = True
+
     # Open the file object
+    nucaps_file = nucaps_file_list[0]
     fileObj = Dataset(nucaps_file)
 
     try:
@@ -802,49 +818,23 @@ def nucaps_sounder(nucaps_file,lat_0=None,lon_0=None):
             sounding_inputs[label]['data'] = ma.array(data,mask=data_mask)
 
     # Computing the relative humidity
-    sounding_inputs['relh'] = {}
-    mr_to_rh_vec = np.vectorize(mr_to_rh)
-    rh = mr_to_rh_vec(
-            sounding_inputs['wvap']['data'],
-            sounding_inputs['pres']['data'],
-            sounding_inputs['temp']['data']
-            )
-    sounding_inputs['relh']['data'] = rh
-    sounding_inputs['relh']['units'] = '%'
-    sounding_inputs['relh']['long_name'] = 'Relative Humidity'
-
-    # Computing the water vapor pressure in Pa
-    #sounding_inputs['ewat'] = {}
-    #MixR2VaporPress_vec = np.vectorize(MixR2VaporPress)
-    #vapor_pressure_water = MixR2VaporPress_vec(
-            #sounding_inputs['wvap']['data'] * 0.001,
-            #sounding_inputs['pres']['data'] * 100.
-            #)
-    #sounding_inputs['ewat']['data'] = vapor_pressure_water
-    #sounding_inputs['ewat']['units'] = 'Pa'
-    #sounding_inputs['ewat']['long_name'] = 'Water vapor pressure in Pa'
-    
-    #DewPoint_vec = np.vectorize(DewPoint)
-    #sounding_inputs['dwpt'] = {}
-    #dwpt = DewPoint_vec(vapor_pressure_water) + 273.15
-
-    #dewpoint_magnus_vec = np.vectorize(dewpoint_magnus)
-    #sounding_inputs['dwpt'] = {}
-    #dwpt = dewpoint_magnus_vec(
-            #sounding_inputs['temp']['data'],
-            #sounding_inputs['relh']['data']
-            #)
-
-    dewpoint_AB_vec = np.vectorize(dewpoint_AB)
     sounding_inputs['dwpt'] = {}
-    dwpt = dewpoint_AB_vec(
+    sounding_inputs['relh'] = {}
+
+    dewhum_vec = np.vectorize(dewhum)
+    dwpt,rh,_ = dewhum_vec(
+            sounding_inputs['pres']['data'],
             sounding_inputs['temp']['data'],
-            sounding_inputs['relh']['data']
-            ) + 273.15
+            sounding_inputs['wvap']['data']
+            )
 
     sounding_inputs['dwpt']['data'] = dwpt
     sounding_inputs['dwpt']['units'] = 'K'
     sounding_inputs['dwpt']['long_name'] = 'Dew-point Temperature profile in K'
+
+    sounding_inputs['relh']['data'] = rh
+    sounding_inputs['relh']['units'] = '%'
+    sounding_inputs['relh']['long_name'] = 'Relative Humidity'
 
     return sounding_inputs
 
@@ -889,7 +879,7 @@ def _argparse():
 
     import argparse
 
-    dataChoices=['IAPP','MIRS','DR','NUCAPS']
+    dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
 
     defaults = {
                 'input_file':None,
@@ -1044,23 +1034,34 @@ def main():
     outputFilePrefix  = options.outputFilePrefix
     dpi = options.dpi
 
+    # Obtain matched lists of the geolocation and product files
+    input_file_list = granuleFiles(input_file)
+
+    if input_file_list==[]:
+        LOG.warn('No files match the input file glob "{}", aborting.'
+                .format(input_file))
+        sys.exit(1)
+
+    LOG.info("input file(s): {}".format(input_file_list))
+
     # Read in the input file, and return a doctionary containing the required
     # data
 
-    dataChoices=['IAPP','MIRS','DR','NUCAPS']
+    dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
 
     if datatype == 'IAPP' :
-        sounding_inputs = iapp_sounder(input_file,lat_0=lat_0,lon_0=lon_0)
+        sounding_inputs = iapp_sounder(input_file_list,lat_0=lat_0,lon_0=lon_0)
     elif datatype == 'MIRS' :
-        sounding_inputs = mirs_sounder(input_file,lat_0=lat_0,lon_0=lon_0)
-    elif datatype == 'DR' :
-        sounding_inputs = dual_regression_sounder(input_file,lat_0=lat_0,lon_0=lon_0)
+        sounding_inputs = mirs_sounder(input_file_list,lat_0=lat_0,lon_0=lon_0)
+    elif datatype == 'HSRTV' :
+        sounding_inputs = hsrtv_sounder(input_file_list,lat_0=lat_0,lon_0=lon_0)
     elif datatype == 'NUCAPS' :
-        sounding_inputs = nucaps_sounder(input_file,lat_0=lat_0,lon_0=lon_0)
+        sounding_inputs = nucaps_sounder(input_file_list,lat_0=lat_0,lon_0=lon_0)
     else:
         pass
 
-    input_file = path.basename(input_file)
+    #input_file = path.basename(input_file)
+    input_file = path.basename(input_file_list[0])
 
     # Determine the filename
     file_suffix = "{}_SkewT".format(datatype)

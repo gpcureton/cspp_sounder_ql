@@ -5,7 +5,7 @@
 ### Overview
 
 This document contains instructions for installation and operation of the Community Satellite
-Processing Package (CSPP) release of the Sounder Qhicklooks Package (Sounder-QL)
+Processing Package (CSPP) release of the Sounder Quicklooks Package (Sounder-QL)
 software for plotting navigated sounder datasets derived from one of several software packages
 that create level-2 sounder retrievals.
 
@@ -54,7 +54,7 @@ are generated from level-2 product files produced by the following software pack
 
 * CSPP-International ATOVS Processing Package (CSPP-IAPP)
 * Microwave Integrated Retrieval System (MIRS)
-* CSPP Hyperspectral Retrieval (Dual Regression) Package
+* CSPP Hyperspectral Retrieval (HSRTV) Package
 * NOAA Unique CrIS/ATMS Product System (NUCAPS)
 
 Included with the CSPP-Sounder-QL package is a self-contained Python distribution, `ShellB3`.
@@ -148,7 +148,7 @@ Sounder_QL_1_0
 ### ql_level2_image.sh
 
 The bash script `ql_level2_image.sh` checks for environment variable `CSPP_SOUNDER_QL_HOME`
-and then invokes the Python script `$CSPP_SOUNDER_QL_HOME/sounder_ql/sounder_image.py` ,
+and then invokes the Python script `$CSPP_SOUNDER_QL_HOME/scripts/sounder_image.py` ,
 which contains the logic to ingest the various level-2 product type, and plot either the navigated
 temperature, dewpoint or relative humidity. The script `ql_level2_image.sh` requires, at a
 minimum, the name of the input level-2 file, and the type of the input sounder file, in that order...
@@ -166,7 +166,7 @@ bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh FILE FILE_TYPE`
 Various command line options are available for ql_level2_image.sh as shown below:
 
 ```
-bash $CSPP_SOUNDER_QL_HOME/sounder_ql/ql_level2_image.sh
+bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh
 
 usage: sounder_image.py [-h] [-v] [--dset {temp,dwpt,relh}] [-S STRIDE]
                         [--pressure PRESSURE] [--plotMin PLOTMIN]
@@ -175,17 +175,17 @@ usage: sounder_image.py [-h] [-v] [--dset {temp,dwpt,relh}] [-S STRIDE]
                         [--lonMin LONMIN] [--lonMax LONMAX] [--scatter_plot]
                         [-P POINTSIZE] [-s SCALE] [-m {c,l,i}]
                         [-o OUTPUT_FILE] [-O OUTPUTFILEPREFIX] [-z]
-                        input_file {IAPP,MIRS,DR,NUCAPS}
+                        input_file {IAPP,MIRS,HSRTV,NUCAPS}
 
 Create a contour plot of temperature, dewpoint or something else at a
-particular pressure level. Supports IAPP, MIRS, DR and NUCAPS files.
+particular pressure level. Supports IAPP, MIRS, HSRTV and NUCAPS files.
 
 positional arguments:
   input_file            The fully qualified path to a single level-1d input
                         file.
-  {IAPP,MIRS,DR,NUCAPS}
+  {IAPP,MIRS,HSRTV,NUCAPS}
                         The type of the input sounder data file. Possible
-                        values are... 'IAPP', 'MIRS', 'DR', 'NUCAPS'.
+                        values are... 'IAPP', 'MIRS', 'HSRTV', 'NUCAPS'.
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -236,33 +236,33 @@ pressure level of 1000mb.
 ### ql_level2_skewt.sh
 
 The bash script `ql_level2_skewt.sh` checks for environment variable `CSPP_SOUNDER_QL_HOME`
-and then invokes the Python script `$CSPP_SOUNDER_QL_HOME/sounder_ql/sounder_skewt.py`,
+and then invokes the Python script `$CSPP_SOUNDER_QL_HOME/scripts/sounder_skewt.py`,
 which contains the logic to ingest the various level-2 product type, and plot either the navigated
 temperature, dewpoint or relative humidity. The script `ql_level2_skewt.sh` requires, at a
 minimum, the name of the input level-2 file, and the type of the input sounder file, in that order...
 
 ```bash
-bash $CSPP_SOUNDER_QL_HOME/sounder_ql/ql_level2_skewt.sh FILE FILE_TYPE
+bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_skewt.sh FILE FILE_TYPE
 ```
 
 Various command line options are available for `ql_level2_image.sh` as shown below:
 
 ```
-bash $CSPP_SOUNDER_QL_HOME/sounder_ql/ql_level2_skewt.sh
+bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_skewt.sh
 
 usage: sounder_skewt.py [-h] [-v] [--temp_min TEMP_MIN] [--temp_max TEMP_MAX]
                         [-d DPI] [--lat_0 LAT_0] [--lon_0 LON_0]
                         [-o OUTPUT_FILE] [-O OUTPUTFILEPREFIX] [-z]
-                        input_file {IAPP,MIRS,DR,NUCAPS}
+                        input_file {IAPP,MIRS,HSRTV,NUCAPS}
 
 Create a Skew-T plot from input sounder data.
 
 positional arguments:
   input_file            The fully qualified path to a single level-1d input
                         file.
-  {IAPP,MIRS,DR,NUCAPS}
+  {IAPP,MIRS,HSRTV,NUCAPS}
                         The type of the input sounder data file. Possible
-                        values are... 'IAPP', 'MIRS', 'DR', 'NUCAPS'.
+                        values are... 'IAPP', 'MIRS', 'HSRTV', 'NUCAPS'.
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -292,9 +292,9 @@ Below we have example plots of (anti-clockwise from top-right) the relative humi
 temperature, and dewpoint temperature at 1000mb, and the Skew-T plot from the center of the
 previous swaths (latitude and longitude is indicated).
 
-![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/NOAA-18/noaa18_L2_d20141026_t0953333_e1005045_c20141110201314204058_iapp.nc.HRPT_temp_1000mb.png "" "width:300px")
-![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/NOAA-18/noaa18_L2_d20141026_t0953333_e1005045_c20141110201314204058_iapp.nc.HRPT_dwpt_1000mb.png "" "width:300px")
-![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/NOAA-18/noaa18_L2_d20141026_t0953333_e1005045_c20141110201314204058_iapp.nc.HRPT_relh_1000mb.png "" "width:300px")
-![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/NOAA-18/noaa18_L2_d20141026_t0953333_e1005045_c20141110201314204058_iapp.nc.HRPT_SkewT.png "" "width:300px")
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/NOAA-18/noaa18_L2_d20141026_t0953333_e1005045_c20141110201314204058_iapp.nc.HRPT_temp_1000mb.png "" "width:200px")
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/NOAA-18/noaa18_L2_d20141026_t0953333_e1005045_c20141110201314204058_iapp.nc.HRPT_dwpt_1000mb.png "" "width:200px")
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/NOAA-18/noaa18_L2_d20141026_t0953333_e1005045_c20141110201314204058_iapp.nc.HRPT_relh_1000mb.png "" "width:200px")
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/NOAA-18/noaa18_L2_d20141026_t0953333_e1005045_c20141110201314204058_iapp.nc.HRPT_SkewT.png "" "width:200px")
 
 

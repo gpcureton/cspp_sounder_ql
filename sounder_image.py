@@ -9,7 +9,7 @@ Purpose: Create a plot of temperature, dewpoint or relative humidity,
          
          * International ATOVS Processing Package (IAPP)
          * Microwave Integrated Retrieval System (MIRS)
-         * CSPP Hyperspectral Retrieval (Dual Regression) Package
+         * CSPP Hyperspectral Retrieval (HSRTV) Package
          * NOAA Unique CrIS/ATMS Product System (NUCAPS)
          
 
@@ -30,7 +30,7 @@ where...
     INPUTFILES: The fully qualified path to the input files. May be a 
     file glob.
 
-    DATATYPE: One of 'IAPP','MIRS', 'DR' or 'NUCAPS'.
+    DATATYPE: One of 'IAPP','MIRS', 'HSRTV' or 'NUCAPS'.
 
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2014-05-10.
@@ -95,9 +95,7 @@ from netCDF4 import Dataset
 from netCDF4 import num2date
 import h5py
 
-import skewt as skT
-from thermo import mr_to_rh, rh_to_mr, dewpoint_magnus, dewpoint_AB
-from thermo import MixR2VaporPress, DewPoint
+from thermo import dewhum
 
 # every module should have a LOG object
 LOG = logging.getLogger(__file__)
@@ -405,8 +403,8 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
     temp = ma.array(sounding_inputs['temp']['data'],mask=relh_mask)
     pressure_array = ma.array(pressure_array,mask=relh_mask)
 
-    mr_to_rh_vec = np.vectorize(mr_to_rh)
-    rh = mr_to_rh_vec(wvap,pressure_array,temp).real
+    dewhum_vec = np.vectorize(dewhum)
+    _,rh,_ = dewhum_vec(pressure_array,temp,wvap)
 
     sounding_inputs['relh']['data'] = rh
     sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
@@ -598,20 +596,33 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
 
             sounding_inputs[label]['mask'] = data_mask
 
-    # Computing the relative humidity
+    # Computing the dewpoint temperature and relative humidity
+    sounding_inputs['dwpt'] = {}
     sounding_inputs['relh'] = {}
     LOG.debug("wvap.shape =  {}".format(sounding_inputs['wvap']['data'].shape))
     LOG.debug("temp.shape =  {}".format(sounding_inputs['temp']['data'].shape))
 
+    dwpt_mask = sounding_inputs['wvap']['mask']+sounding_inputs['temp']['mask']
     relh_mask = sounding_inputs['wvap']['mask']+sounding_inputs['temp']['mask']
 
-    wvap = ma.array(sounding_inputs['wvap']['data'],mask=relh_mask)
+    wvap = ma.array(sounding_inputs['wvap']['data'],mask=dwpt_mask)
     temp = ma.array(sounding_inputs['temp']['data'],mask=relh_mask)
     pressure_array = ma.array(pressure_array,mask=relh_mask)
 
-    mr_to_rh_vec = np.vectorize(mr_to_rh)
-    rh = mr_to_rh_vec(wvap,pressure_array,temp).real
+    dewhum_vec = np.vectorize(dewhum)
+    dwpt,rh,_ = dewhum_vec(pressure_array,temp,wvap)
 
+    # Copy dewpoint temperature to output
+    sounding_inputs['dwpt']['data'] = dwpt
+    sounding_inputs['dwpt']['mask'] = dwpt.mask if  ma.is_masked(dwpt) \
+            else np.zeros(dwpt.shape,dtype='bool')
+    sounding_inputs['dwpt']['units'] = 'K'
+    sounding_inputs['dwpt']['long_name'] = 'Dew-point Temperature in K'
+
+    LOG.debug("ma.is_masked({}) = {}".format('dwpt',ma.is_masked(dwpt)))
+    LOG.debug("There are {} masked values in dwpt".format(np.sum(dwpt.mask)))
+
+    # Copy relative humidity to output
     sounding_inputs['relh']['data'] = rh
     sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
             else np.zeros(rh.shape,dtype='bool')
@@ -621,35 +632,10 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
     LOG.debug("ma.is_masked({}) = {}".format('relh',ma.is_masked(rh)))
     LOG.debug("There are {}/{} masked values in relh".format(np.sum(rh.mask),rh.size))
 
-    # Computing the dewpoint temperature
-    sounding_inputs['dwpt'] = {}
-    LOG.debug("relh.shape =  {}".format(sounding_inputs['relh']['data'].shape))
-    LOG.debug("temp.shape =  {}".format(sounding_inputs['temp']['data'].shape))
-
-    dwpt_mask = sounding_inputs['relh']['mask']+sounding_inputs['temp']['mask']
-
-    rh = ma.array(sounding_inputs['relh']['data'],mask=dwpt_mask)
-    temp = ma.array(sounding_inputs['temp']['data'],mask=dwpt_mask)
-    pressure_array = ma.array(pressure_array,mask=dwpt_mask)
-
-    dewpoint_AB_vec = np.vectorize(dewpoint_AB)
-    dwpt = dewpoint_AB_vec(temp,rh) + 273.15
-
-    sounding_inputs['dwpt']['data'] = dwpt
-    sounding_inputs['dwpt']['mask'] = dwpt.mask if  ma.is_masked(dwpt) \
-            else np.zeros(dwpt.shape,dtype='bool')
-    sounding_inputs['dwpt']['units'] = 'K'
-    sounding_inputs['dwpt']['long_name'] = 'Dew-point Temperature in K'
-
-    LOG.debug("ma.is_masked({}) = {}".format('dwpt',ma.is_masked(dwpt)))
-    LOG.debug("There are {} masked values in dwpt".format(np.sum(dwpt.mask)))
-    LOG.debug("dwpt.shape =  {}".format(sounding_inputs['dwpt']['data'].shape))
-    LOG.debug("dwpt_mask.shape =  {}".format(sounding_inputs['dwpt']['mask'].shape))
-
     return sounding_inputs
 
 
-def dual_regression_sounder(dr_file_list,pres_0=850.):
+def hsrtv_sounder(dr_file_list,pres_0=850.):
     '''
     Plevs: Pressure for each level in mb (hPa)
     TAir: Temperature profile in K
@@ -742,7 +728,7 @@ def dual_regression_sounder(dr_file_list,pres_0=850.):
                 # Get the pressure scale
                 pressure = sounding_inputs['pres']['node'][:]
 
-                #FIXME: All attributes for the DR datasets appear to be strings, 
+                #FIXME: All attributes for the HSRTV datasets appear to be strings, 
                 #       whether the attribute value is a string or not. So we can't 
                 #       determine the attribute type from the file, we just have 
                 #       *know* it. Why bother with self-descibing file formats then?
@@ -857,9 +843,10 @@ def dual_regression_sounder(dr_file_list,pres_0=850.):
         temp = ma.array(sounding_inputs['temp']['data'],mask=relh_mask)
         pressure_array = ma.array(pressure_array,mask=relh_mask)
 
-        mr_to_rh_vec = np.vectorize(mr_to_rh)
-        rh = mr_to_rh_vec(wvap,pressure_array,temp).real
+        dewhum_vec = np.vectorize(dewhum)
+        _,rh,_ = dewhum_vec(pressure_array,temp,wvap)
 
+        # Copy relative humidity to output
         sounding_inputs['relh']['data'] = rh
         sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
                 else np.zeros(temp.shape,dtype='bool')
@@ -1081,43 +1068,23 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
 
             sounding_inputs[label]['mask'] = data_mask
 
-    # Computing the relative humidity
+    # Computing the dewpoint temperature and relative humidity
+    sounding_inputs['dwpt'] = {}
     sounding_inputs['relh'] = {}
     LOG.debug("wvap.shape =  {}".format(sounding_inputs['wvap']['data'].shape))
     LOG.debug("temp.shape =  {}".format(sounding_inputs['temp']['data'].shape))
 
+    dwpt_mask = sounding_inputs['wvap']['mask']+sounding_inputs['temp']['mask']
     relh_mask = sounding_inputs['wvap']['mask']+sounding_inputs['temp']['mask']
 
     wvap = ma.array(sounding_inputs['wvap']['data'],mask=relh_mask)
     temp = ma.array(sounding_inputs['temp']['data'],mask=relh_mask)
     pressure_array = ma.array(pressure_array,mask=relh_mask)
 
-    mr_to_rh_vec = np.vectorize(mr_to_rh)
-    rh = mr_to_rh_vec(wvap,pressure_array,temp).real
+    dewhum_vec = np.vectorize(dewhum)
+    dwpt,rh,_ = dewhum_vec(pressure_array,temp,wvap)
 
-    sounding_inputs['relh']['data'] = rh
-    sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
-            else np.zeros(rh.shape,dtype='bool')
-    sounding_inputs['relh']['units'] = '%'
-    sounding_inputs['relh']['long_name'] = 'Relative Humidity'
-
-    LOG.debug("ma.is_masked({}) = {}".format('relh',ma.is_masked(rh)))
-    LOG.debug("There are {}/{} masked values in relh".format(np.sum(rh.mask),rh.size))
-
-    # Computing the dewpoint temperature
-    sounding_inputs['dwpt'] = {}
-    LOG.debug("relh.shape =  {}".format(sounding_inputs['relh']['data'].shape))
-    LOG.debug("temp.shape =  {}".format(sounding_inputs['temp']['data'].shape))
-
-    dwpt_mask = sounding_inputs['relh']['mask']+sounding_inputs['temp']['mask']
-
-    rh = ma.array(sounding_inputs['relh']['data'],mask=dwpt_mask)
-    temp = ma.array(sounding_inputs['temp']['data'],mask=dwpt_mask)
-    pressure_array = ma.array(pressure_array,mask=dwpt_mask)
-
-    dewpoint_AB_vec = np.vectorize(dewpoint_AB)
-    dwpt = dewpoint_AB_vec(temp,rh) + 273.15
-
+    # Copy dewpoint temperature to output
     sounding_inputs['dwpt']['data'] = dwpt
     sounding_inputs['dwpt']['mask'] = dwpt.mask if  ma.is_masked(dwpt) \
             else np.zeros(dwpt.shape,dtype='bool')
@@ -1126,8 +1093,16 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
 
     LOG.debug("ma.is_masked({}) = {}".format('dwpt',ma.is_masked(dwpt)))
     LOG.debug("There are {} masked values in dwpt".format(np.sum(dwpt.mask)))
-    LOG.debug("dwpt.shape =  {}".format(sounding_inputs['dwpt']['data'].shape))
-    LOG.debug("dwpt_mask.shape =  {}".format(sounding_inputs['dwpt']['mask'].shape))
+
+    # Copy relative humidity to output
+    sounding_inputs['relh']['data'] = rh
+    sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
+            else np.zeros(rh.shape,dtype='bool')
+    sounding_inputs['relh']['units'] = '%'
+    sounding_inputs['relh']['long_name'] = 'Relative Humidity'
+
+    LOG.debug("ma.is_masked({}) = {}".format('relh',ma.is_masked(rh)))
+    LOG.debug("There are {}/{} masked values in relh".format(np.sum(rh.mask),rh.size))
 
     return sounding_inputs
 
@@ -1263,9 +1238,9 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
 
     x,y=m(lon[::stride,::stride],lat[::stride,::stride])
 
-    m.drawcoastlines()
+    m.drawcoastlines(linewidth = 0.5)
     #m.drawstates()
-    m.drawcountries()
+    m.drawcountries(linewidth = 0.5)
     m.fillcontinents(color='0.85',zorder=0)
     m.drawparallels(np.arange( -90, 91,30), color = '0.25', 
             linewidth = 0.5,labels=[1,0,1,0])
@@ -1340,7 +1315,7 @@ def _argparse():
 
     import argparse
 
-    dataChoices=['IAPP','MIRS','DR','NUCAPS']
+    dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
     prodChoices=['temp','wvap','dwpt','relh']
     map_res_choice = ['c','l','i']
 
@@ -1364,7 +1339,7 @@ def _argparse():
                 }
 
     description = '''Create a contour plot of temperature, dewpoint or something 
-                     else at a particular pressure level. Supports IAPP, MIRS, DR 
+                     else at a particular pressure level. Supports IAPP, MIRS, HSRTV 
                      and NUCAPS files.'''
 
     usage = "usage: %prog [mandatory args] [options]"
@@ -1630,14 +1605,14 @@ def main():
     # Read in the input file, and return a dictionary containing the required
     # data
 
-    dataChoices=['IAPP','MIRS','DR','NUCAPS']
+    dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
 
     if datatype == 'IAPP' :
         sounding_inputs = iapp_sounder(input_file_list,pres_0=pressure)
     elif datatype == 'MIRS' :
         sounding_inputs = mirs_sounder(input_file_list,pres_0=pressure)
-    elif datatype == 'DR' :
-        sounding_inputs = dual_regression_sounder(input_file_list,pres_0=pressure)
+    elif datatype == 'HSRTV' :
+        sounding_inputs = hsrtv_sounder(input_file_list,pres_0=pressure)
     elif datatype == 'NUCAPS' :
         sounding_inputs = nucaps_sounder(input_file_list,pres_0=pressure)
     else:
