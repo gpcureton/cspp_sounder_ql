@@ -981,8 +981,7 @@ def _argparse():
                       default=defaults["outputFilePrefix"],
                       type=str,
                       help="""String to prefix to the automatically generated 
-                      png names, which are of the form 
-                      <N_Collection_Short_Name>_<N_Granule_ID>.png. 
+                      png name. 
                       [default: {}]""".format(defaults["outputFilePrefix"])
                       )
 
