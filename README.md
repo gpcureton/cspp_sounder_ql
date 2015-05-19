@@ -288,13 +288,125 @@ optional arguments:
 
 ### Example Plots
 
-Below we have example plots of (anti-clockwise from top-right) the relative humidity,
-temperature, and dewpoint temperature at 1000mb, and the Skew-T plot from the center of the
-previous swaths (latitude and longitude is indicated).
+Below we have example plots of from each of the packages HSRTV, IAPP, MIRS and NUCAPS, broken down by satellite. Each row has the dewpoint temperature,
+relative humidity, skew-T, temperature and water vapor mixing ratio. The Skew-T is calculated at the center of the swaths (latitude and longitude is indicated).
 
-![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/NOAA-18/noaa18_L2_d20141026_t0953333_e1005045_c20141110201314204058_iapp.nc.HRPT_temp_1000mb.png "" "width:200px")
-![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/NOAA-18/noaa18_L2_d20141026_t0953333_e1005045_c20141110201314204058_iapp.nc.HRPT_dwpt_1000mb.png "" "width:200px")
-![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/NOAA-18/noaa18_L2_d20141026_t0953333_e1005045_c20141110201314204058_iapp.nc.HRPT_relh_1000mb.png "" "width:200px")
-![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/NOAA-18/noaa18_L2_d20141026_t0953333_e1005045_c20141110201314204058_iapp.nc.HRPT_SkewT.png "" "width:200px")
+#### HSRTV
 
+- Suomi-NPP
+
+    ```bash
+    for files in $(ls ../../input/hsrtv/CrIS*.h5); \
+    do \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset temp --plotMin=250. --plotMax=300. -m 'l' --scatter_plot -P 8 ; \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset dwpt --plotMin=250. --plotMax=300. -m 'l' --scatter_plot -P 8; \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset wvap --plotMin=0.   --plotMax=14.  -m 'l' --scatter_plot -P 8 ; \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset relh --plotMin=0.   --plotMax=100. -m 'l' --scatter_plot -P 8 ; \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_skewt.sh $files HSRTV ; \
+    done 
+    ```
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/hsrtv/CrIS_d20150403_t190649.atm_prof_rtv.h5.HSRTV_dwpt_852mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/hsrtv/CrIS_d20150403_t190649.atm_prof_rtv.h5.HSRTV_relh_852mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/hsrtv/CrIS_d20150403_t190649.atm_prof_rtv.h5.HSRTV_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/hsrtv/CrIS_d20150403_t190649.atm_prof_rtv.h5.HSRTV_temp_852mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/hsrtv/CrIS_d20150403_t190649.atm_prof_rtv.h5.HSRTV_wvap_852mb.png "" "width:200px")
+
+
+- Metop-B
+
+    ```bash
+    for files in $(ls ../../input/hsrtv/IASI*.h5); \
+    do \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset temp --plotMin=250. --plotMax=300. -m 'l' ; \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset dwpt --plotMin=250. --plotMax=300. -m 'l' ; \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset wvap --plotMin=0.   --plotMax=14.  -m 'l' ; \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset relh --plotMin=0.   --plotMax=100. -m 'l' ; \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_skewt.sh $files HSRTV ; \
+    done 
+    ```
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/hsrtv/IASI_d20150331_t153700_M01.atm_prof_rtv.h5.HSRTV_dwpt_852mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/hsrtv/IASI_d20150331_t153700_M01.atm_prof_rtv.h5.HSRTV_relh_852mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/hsrtv/IASI_d20150331_t153700_M01.atm_prof_rtv.h5.HSRTV_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/hsrtv/IASI_d20150331_t153700_M01.atm_prof_rtv.h5.HSRTV_temp_852mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/hsrtv/IASI_d20150331_t153700_M01.atm_prof_rtv.h5.HSRTV_wvap_852mb.png "" "width:200px")
+
+#### IAPP
+
+```bash
+for files in $(ls ../../input/iapp/*_iapp.nc); \
+do \
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files IAPP --dset temp --plotMin=250. --plotMax=300. -m 'l' ; \
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files IAPP --dset dwpt --plotMin=250. --plotMax=300. -m 'l' ; \
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files IAPP --dset wvap --plotMin=0.   --plotMax=14.  -m 'l' ; \
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files IAPP --dset relh --plotMin=0.   --plotMax=100. -m 'l' ; \
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_skewt.sh $files IAPP ; \
+done 
+```
+
+- Metop-A
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/metopa_L2_d20150402_t1549110_e1554374_c20150402160354864396_iapp.nc.IAPP_dwpt_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/metopa_L2_d20150402_t1549110_e1554374_c20150402160354864396_iapp.nc.IAPP_relh_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/metopa_L2_d20150402_t1549110_e1554374_c20150402160354864396_iapp.nc.IAPP_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/metopa_L2_d20150402_t1549110_e1554374_c20150402160354864396_iapp.nc.IAPP_temp_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/metopa_L2_d20150402_t1549110_e1554374_c20150402160354864396_iapp.nc.IAPP_wvap_850mb.png "" "width:200px")
+
+- Metop-B
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/metopb_L2_d20150330_t0341557_e0353397_c20150330040308043882_iapp.nc.IAPP_dwpt_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/metopb_L2_d20150330_t0341557_e0353397_c20150330040308043882_iapp.nc.IAPP_relh_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/metopb_L2_d20150330_t0341557_e0353397_c20150330040308043882_iapp.nc.IAPP_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/metopb_L2_d20150330_t0341557_e0353397_c20150330040308043882_iapp.nc.IAPP_temp_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/metopb_L2_d20150330_t0341557_e0353397_c20150330040308043882_iapp.nc.IAPP_wvap_850mb.png "" "width:200px")
+
+- NOAA-15
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa15_L2_d20060727_t2100044_e2159548_c20150402223923492393_iapp.nc.IAPP_dwpt_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa15_L2_d20060727_t2100044_e2159548_c20150402223923492393_iapp.nc.IAPP_relh_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa15_L2_d20060727_t2100044_e2159548_c20150402223923492393_iapp.nc.IAPP_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa15_L2_d20060727_t2100044_e2159548_c20150402223923492393_iapp.nc.IAPP_temp_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa15_L2_d20060727_t2100044_e2159548_c20150402223923492393_iapp.nc.IAPP_wvap_850mb.png "" "width:200px")
+
+
+- NOAA-16
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa16_L2_d20140105_t0519406_e0713540_c20150402224320161020_iapp.nc.IAPP_dwpt_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa16_L2_d20140105_t0519406_e0713540_c20150402224320161020_iapp.nc.IAPP_relh_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa16_L2_d20140105_t0519406_e0713540_c20150402224320161020_iapp.nc.IAPP_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa16_L2_d20140105_t0519406_e0713540_c20150402224320161020_iapp.nc.IAPP_temp_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa16_L2_d20140105_t0519406_e0713540_c20150402224320161020_iapp.nc.IAPP_wvap_850mb.png "" "width:200px")
+
+
+- NOAA-18
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa18_L2_d20150331_t1023110_e1034432_c20150331104437295133_iapp.nc.IAPP_dwpt_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa18_L2_d20150331_t1023110_e1034432_c20150331104437295133_iapp.nc.IAPP_relh_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa18_L2_d20150331_t1023110_e1034432_c20150331104437295133_iapp.nc.IAPP_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa18_L2_d20150331_t1023110_e1034432_c20150331104437295133_iapp.nc.IAPP_temp_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa18_L2_d20150331_t1023110_e1034432_c20150331104437295133_iapp.nc.IAPP_wvap_850mb.png "" "width:200px")
+
+
+- NOAA-19
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa19_L2_d20150331_t0905533_e0918221_c20150331092749438101_iapp.nc.IAPP_dwpt_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa19_L2_d20150331_t0905533_e0918221_c20150331092749438101_iapp.nc.IAPP_relh_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa19_L2_d20150331_t0905533_e0918221_c20150331092749438101_iapp.nc.IAPP_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa19_L2_d20150331_t0905533_e0918221_c20150331092749438101_iapp.nc.IAPP_temp_850mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/iapp/noaa19_L2_d20150331_t0905533_e0918221_c20150331092749438101_iapp.nc.IAPP_wvap_850mb.png "" "width:200px")
+
+
+#### MIRS
+
+```bash
+for files in $(ls ../../input/mirs/SND*.nc); \
+do \
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files MIRS --dset temp --plotMin=250. --plotMax=300. -m 'l' ; \
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files MIRS --dset dwpt --plotMin=250. --plotMax=300. -m 'l' ; \
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files MIRS --dset wvap --plotMin=0.   --plotMax=14.  -m 'l' ; \
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files MIRS --dset relh --plotMin=0.   --plotMax=100. -m 'l' ; \
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_skewt.sh $files MIRS ; \
+done 
+```
+
+- Metop-A
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.M2.D15091.S1610.E1615.B0000001.WE.LR.ORB.nc.MIRS_dwpt_840mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.M2.D15091.S1610.E1615.B0000001.WE.LR.ORB.nc.MIRS_relh_840mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.M2.D15091.S1610.E1615.B0000001.WE.LR.ORB.nc.MIRS_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.M2.D15091.S1610.E1615.B0000001.WE.LR.ORB.nc.MIRS_temp_840mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.M2.D15091.S1610.E1615.B0000001.WE.LR.ORB.nc.MIRS_wvap_840mb.png "" "width:200px")
+
+- Metop-B
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.M1.D15091.S1516.E1528.B0000001.WE.LR.ORB.nc.MIRS_dwpt_840mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.M1.D15091.S1516.E1528.B0000001.WE.LR.ORB.nc.MIRS_relh_840mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.M1.D15091.S1516.E1528.B0000001.WE.LR.ORB.nc.MIRS_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.M1.D15091.S1516.E1528.B0000001.WE.LR.ORB.nc.MIRS_temp_840mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.M1.D15091.S1516.E1528.B0000001.WE.LR.ORB.nc.MIRS_wvap_840mb.png "" "width:200px")
+
+- NOAA-18
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.NN.D15091.S2139.E2151.B5083131.WE.LR.ORB.nc.MIRS_dwpt_840mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.NN.D15091.S2139.E2151.B5083131.WE.LR.ORB.nc.MIRS_relh_840mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.NN.D15091.S2139.E2151.B5083131.WE.LR.ORB.nc.MIRS_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.NN.D15091.S2139.E2151.B5083131.WE.LR.ORB.nc.MIRS_temp_840mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.NN.D15091.S2139.E2151.B5083131.WE.LR.ORB.nc.MIRS_wvap_840mb.png "" "width:200px")
+
+- NOAA-19
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.NP.D15089.S1904.E1916.B3164343.WE.LR.ORB.nc.MIRS_dwpt_840mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.NP.D15089.S1904.E1916.B3164343.WE.LR.ORB.nc.MIRS_relh_840mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.NP.D15089.S1904.E1916.B3164343.WE.LR.ORB.nc.MIRS_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.NP.D15089.S1904.E1916.B3164343.WE.LR.ORB.nc.MIRS_temp_840mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/mirs/SND_SX.NP.D15089.S1904.E1916.B3164343.WE.LR.ORB.nc.MIRS_wvap_840mb.png "" "width:200px")
+
+
+#### NUCAPS
+
+- Suomi-NPP
+
+    ```bash
+    files="../../input/nucaps/NUCAPS-EDR_v1r0_npp_s2015040319*.nc"
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh "$files" NUCAPS --dset temp --plotMin=250. --plotMax=300. -m 'l'
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh "$files" NUCAPS --dset dwpt --plotMin=250. --plotMax=300. -m 'l'
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh "$files" NUCAPS --dset wvap --plotMin=0.   --plotMax=14.  -m 'l'
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh "$files" NUCAPS --dset relh --plotMin=0.   --plotMax=100. -m 'l'
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_skewt.sh "$files" NUCAPS
+    ```
+
+![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/nucaps/NUCAPS-EDR_v1r0_npp_s201504031906499_e201504031907197_c201504032037040.nc.NUCAPS_dwpt_852mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/nucaps/NUCAPS-EDR_v1r0_npp_s201504031906499_e201504031907197_c201504032037040.nc.NUCAPS_relh_852mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/nucaps/NUCAPS-EDR_v1r0_npp_s201504031906499_e201504031907197_c201504032037040.nc.NUCAPS_SkewT.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/nucaps/NUCAPS-EDR_v1r0_npp_s201504031906499_e201504031907197_c201504032037040.nc.NUCAPS_temp_852mb.png "" "width:200px")![Alt Text](http://www.ssec.wisc.edu/~geoffc/CSPP_Sounder_QL/quicklooks/nucaps/NUCAPS-EDR_v1r0_npp_s201504031906499_e201504031907197_c201504032037040.nc.NUCAPS_wvap_852mb.png "" "width:200px")
 
