@@ -22,7 +22,7 @@ export DPE_VER=CSPP_SOUNDER_QL_1_0
 export PY=${CSPP_SOUNDER_QL_HOME}/common/ShellB3/bin/python
 
 # common modules location used by CSPP scripts
-export PYTHONPATH=$CSPP_SOUNDER_QL_HOME/common:${CSPP_SOUNDER_QL_HOME}/sounder_ql
+export PYTHONPATH=$CSPP_SOUNDER_QL_HOME/common:${CSPP_SOUNDER_QL_HOME}/scripts
 
 #environment cleanups
 unset LD_PRELOAD
