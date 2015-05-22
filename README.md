@@ -168,31 +168,30 @@ Various command line options are available for ql_level2_image.sh as shown below
 ```
 bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh
 
-usage: sounder_image.py [-h] [-v] [--dset {temp,dwpt,relh}] [-S STRIDE]
+usage: sounder_image.py [-h] [--dset {temp,wvap,dwpt,relh}] [-S STRIDE]
                         [--pressure PRESSURE] [--plotMin PLOTMIN]
                         [--plotMax PLOTMAX] [-d DPI] [--lat_0 LAT_0]
                         [--lon_0 LON_0] [--latMin LATMIN] [--latMax LATMAX]
                         [--lonMin LONMIN] [--lonMax LONMAX] [--scatter_plot]
                         [-P POINTSIZE] [-s SCALE] [-m {c,l,i}]
-                        [-o OUTPUT_FILE] [-O OUTPUTFILEPREFIX] [-z]
+                        [-o OUTPUT_FILE] [-O OUTPUTFILEPREFIX] [-v] [-q]
                         input_file {IAPP,MIRS,HSRTV,NUCAPS}
 
 Create a contour plot of temperature, dewpoint or something else at a
 particular pressure level. Supports IAPP, MIRS, HSRTV and NUCAPS files.
 
 positional arguments:
-  input_file            The fully qualified path to a single level-1d input
-                        file.
+  input_file            The fully qualified path to the input file(s). May be
+                        a file glob (which should be in quotes).
   {IAPP,MIRS,HSRTV,NUCAPS}
                         The type of the input sounder data file. Possible
                         values are... 'IAPP', 'MIRS', 'HSRTV', 'NUCAPS'.
 
 optional arguments:
   -h, --help            show this help message and exit
-  -v, --version         show program's version number and exit
-  --dset {temp,dwpt,relh}
+  --dset {temp,wvap,dwpt,relh}
                         The sounder dataset to plot. Possible values are...
-                        'temp', 'dwpt', 'relh'. [default: temp]
+                        'temp', 'wvap', 'dwpt', 'relh'. [default: temp]
   -S STRIDE, --stride STRIDE
                         Sample every STRIDE pixels in the band data. [default:
                         1]
@@ -223,11 +222,10 @@ optional arguments:
                         The filename of the output png file.
   -O OUTPUTFILEPREFIX, --output_file_prefix OUTPUTFILEPREFIX
                         String to prefix to the automatically generated png
-                        names, which are of the form
-                        <N_Collection_Short_Name>_<N_Granule_ID>.png.
-                        [default: None]
-  -z, --verbose         each occurrence increases verbosity 1 level from
-                        ERROR: -z=WARNING -zz=INFO -zzz=DEBUG
+                        name. [default: None]
+  -v, --verbose         each occurrence increases verbosity 1 level from INFO.
+                        -v=DEBUG
+  -q, --quiet           Silence all console output
 ```
 
 By default, if no optional parameters are given, the script will plot the temperature dataset at a
@@ -250,9 +248,9 @@ Various command line options are available for `ql_level2_image.sh` as shown bel
 ```
 bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_skewt.sh
 
-usage: sounder_skewt.py [-h] [-v] [--temp_min TEMP_MIN] [--temp_max TEMP_MAX]
+usage: sounder_skewt.py [-h] [--temp_min TEMP_MIN] [--temp_max TEMP_MAX]
                         [-d DPI] [--lat_0 LAT_0] [--lon_0 LON_0]
-                        [-o OUTPUT_FILE] [-O OUTPUTFILEPREFIX] [-z]
+                        [-o OUTPUT_FILE] [-O OUTPUTFILEPREFIX] [-v] [-q]
                         input_file {IAPP,MIRS,HSRTV,NUCAPS}
 
 Create a Skew-T plot from input sounder data.
@@ -266,7 +264,6 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  -v, --version         show program version number and exit
   --temp_min TEMP_MIN   Minimum temperature value to plot. [default: -40 deg
                         C]
   --temp_max TEMP_MAX   Maximum temperature value to plot. [default: 40 deg C]
@@ -279,11 +276,10 @@ optional arguments:
                         None]
   -O OUTPUTFILEPREFIX, --output_file_prefix OUTPUTFILEPREFIX
                         String to prefix to the automatically generated png
-                        names, which are of the form
-                        <N_Collection_Short_Name>_<N_Granule_ID>.png.
-                        [default: None]
-  -z, --verbose         each occurrence increases verbosity 1 level from
-                        ERROR: -z=WARNING -zz=INFO -zzz=DEBUG
+                        name. [default: None]
+  -v, --verbose         each occurrence increases verbosity 1 level from INFO.
+                        -v=DEBUG
+  -q, --quiet           Silence all console output
 ```
 
 ### Example Plots
