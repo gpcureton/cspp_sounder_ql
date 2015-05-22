@@ -228,8 +228,8 @@ optional arguments:
   -q, --quiet           Silence all console output
 ```
 
-By default, if no optional parameters are given, the script will plot the temperature dataset at a
-pressure level of 1000mb.
+By default, if no optional parameters are given, the script will plot the temperature dataset at the
+pressure level closest to 850mb.
 
 ### ql_level2_skewt.sh
 
