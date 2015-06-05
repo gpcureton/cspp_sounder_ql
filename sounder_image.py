@@ -1177,6 +1177,7 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
     plotMax       = plot_options['plotMax']
     scale         = plot_options['scale']
     map_res       = plot_options['map_res']
+    proj          = plot_options['proj']
     #cmap          = plot_options['cmap']
     doScatterPlot = plot_options['scatterPlot']
     pointSize     = plot_options['pointSize']
@@ -1191,6 +1192,39 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
         LOG.warn("Entire {} dataset is missing, aborting".\
                 format(cbar_title))
         return -1
+
+    # Determine if this is a global projection, so we can avoid having the 
+    # global "outset" plot.
+    global_plot = False
+    if (proj=='moll' 
+            or proj=='hammer'
+            or proj=='robin'
+            or proj=='eck4'
+            or proj=='kav7'
+            or proj=='mbtfpq'
+            or proj=='sinu'
+            or proj=='cyl'
+            or proj=='merc'
+            or proj=='mill'
+            or proj=='gall'
+            or proj=='cea'
+            or proj=='vandg'):
+        global_plot = True
+
+    # Determine if this is a "rectangular" projection, so we can set sensible 
+    # latitude limits.
+    rect_plot = False
+    if (proj=='cyl'
+            or proj=='merc'
+            or proj=='mill'
+            or proj=='gall'
+            or proj=='cea'):
+        rect_plot = True
+
+    if (proj=='geos' or proj=='ortho' or global_plot):
+        LOG.info("Setting lat_0 and lon_0 for {} projection.".format(proj))
+        lat_0 = 0. if lat_0==None else lat_0
+        lon_0 = 0. if lon_0==None else lon_0
 
     # Compute the central lat and lon if they are not specified
     if (lat_0==None) and (lon_0==None):
@@ -1217,35 +1251,52 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
         LOG.info("Longitude extent: ({:4.2f},{:4.2f})".format(lonMin,lonMax))
 
     # General Setup
-    figWidth,figHeight = 8.,8.
-    ax_rect = [0.05, 0.15, 0.90, 0.75  ] # [left,bottom,width,height]
+    if global_plot:
+        figWidth,figHeight = 10.,6.
+        ax_rect = [0.05, 0.17, 0.90, 0.72  ] # [left,bottom,width,height]
+    else:
+        figWidth,figHeight = 8.,8.
+        ax_rect = [0.05, 0.15, 0.90, 0.75  ] # [left,bottom,width,height]
 
     fig = Figure(figsize=(figWidth,figHeight))
     canvas = FigureCanvas(fig)
 
     ax = fig.add_axes(ax_rect)
 
-    LOG.info("scale = {}".format(scale))
-    windowWidth = scale *(0.35*12000000.)
-    windowHeight = scale *(0.50*9000000.)
-    m = Basemap(projection='lcc',lon_0=lon_0,lat_0=lat_0,
-            width=windowWidth,height=windowHeight,
-            #llcrnrlon=lonMin,
-            #llcrnrlat=latMin,
-            #urcrnrlon=lonMax,
-            #urcrnrlat=latMax,
-            ax=ax,fix_aspect=True,resolution=map_res)
+    LOG.info("Plotting for {} projection...".format(proj))
+    try:
+        if global_plot:
+            if rect_plot:
+                m = Basemap(projection=proj,lon_0=lon_0,lat_0=lat_0,
+                        llcrnrlat=-80,urcrnrlat=80,llcrnrlon=-180,urcrnrlon=180,
+                        ax=ax,fix_aspect=True,resolution=map_res)
+            else:
+                m = Basemap(projection=proj,lon_0=lon_0,lat_0=lat_0,
+                        ax=ax,fix_aspect=True,resolution=map_res)
+        else:
+            LOG.info("scale = {}".format(scale))
+            windowWidth = scale *(0.35*12000000.)
+            windowHeight = scale *(0.50*9000000.)
+            m = Basemap(projection=proj,lon_0=lon_0,lat_0=lat_0,
+                    width=windowWidth,height=windowHeight,
+                    #llcrnrlon=lonMin,
+                    #llcrnrlat=latMin,
+                    #urcrnrlon=lonMax,
+                    #urcrnrlat=latMax,
+                    ax=ax,fix_aspect=True,resolution=map_res)
+    except ValueError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
 
     x,y=m(lon[::stride,::stride],lat[::stride,::stride])
 
     m.drawcoastlines(linewidth = 0.5)
-    #m.drawstates()
     m.drawcountries(linewidth = 0.5)
     m.fillcontinents(color='0.85',zorder=0)
     m.drawparallels(np.arange( -90, 91,30), color = '0.25', 
-            linewidth = 0.5,labels=[1,0,1,0])
+            linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
     m.drawmeridians(np.arange(-180,180,30), color = '0.25', 
-            linewidth = 0.5,labels=[1,0,1,0])
+            linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
 
     data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
 
@@ -1268,8 +1319,6 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
     ppl.setp(ax.get_xticklabels(), visible=False)
     ppl.setp(ax.get_yticklabels(), visible=False)
 
-    #ax.set_aspect('equal')
-
     cax_rect = [0.05 , 0.05, 0.90 , 0.05 ] # [left,bottom,width,height]
     cax = fig.add_axes(cax_rect,frameon=False) # setup colorbar axes
     cb = fig.colorbar(cs, cax=cax, orientation='horizontal')
@@ -1279,34 +1328,38 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
     #
     # Add a small globe with the swath indicated on it #
     #
+    if not global_plot:
+        # Create main axes instance, leaving room for colorbar at bottom,
+        # and also get the Bbox of the axes instance
+        glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
+        glax = fig.add_axes(glax_rect)
 
-    # Create main axes instance, leaving room for colorbar at bottom,
-    # and also get the Bbox of the axes instance
-    glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
-    glax = fig.add_axes(glax_rect)
+        m_globe = Basemap(lat_0=0.,lon_0=0.,\
+            ax=glax,resolution='c',area_thresh=10000.,projection='robin')
 
-    m_globe = Basemap(lat_0=0.,lon_0=0.,\
-        ax=glax,resolution='c',area_thresh=10000.,projection='robin')
+        # If we previously had a zero size data array, increase the pointSize
+        # so the data points are visible on the global plot
+        if (np.shape(lon[::stride,::stride])[0]==2) :
+            pointSize = 5.
 
-    # If we previously had a zero size data array, increase the pointSize
-    # so the data points are visible on the global plot
-    if (np.shape(lon[::stride,::stride])[0]==2) :
-        pointSize = 5.
+        x,y=m_globe(lon[::stride,::stride],lat[::stride,::stride])
+        swath = np.zeros(np.shape(x),dtype=int)
 
-    x,y=m_globe(lon[::stride,::stride],lat[::stride,::stride])
-    swath = np.zeros(np.shape(x),dtype=int)
+        m_globe.drawmapboundary(linewidth=0.1)
+        m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
+        m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
 
-    m_globe.drawmapboundary(linewidth=0.1)
-    m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
-    m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
+        p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
+    else:
+        pass
 
-    p_globe = m_globe.scatter(x,y,s=pointSize,c="red",axes=glax,edgecolors='none',zorder=2)
 
     # Redraw the figure
     canvas.draw()
     LOG.info("Writing image file {}".format(pngName))
     canvas.print_figure(pngName,dpi=dpi)
 
+    return 0
 
 def _argparse():
     '''
@@ -1317,7 +1370,39 @@ def _argparse():
 
     dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
     prodChoices=['temp','wvap','dwpt','relh']
+    map_proj_choice = ['lcc','ortho','i']
     map_res_choice = ['c','l','i']
+    map_proj_choice = {'cea':     'Cylindrical Equal Area',
+                       'mbtfpq':  'McBryde-Thomas Flat-Polar Quartic',
+                       'sinu':    'Sinusoidal',
+                       'poly':    'Polyconic',
+                       'moll':    'Mollweide',
+                       'lcc':     'Lambert Conformal',
+                       'tmerc':   'Transverse Mercator',
+                       #'nplaea':  'North-Polar Lambert Azimuthal',
+                       'gall':    'Gall Stereographic Cylindrical',
+                       #'npaeqd':  'North-Polar Azimuthal Equidistant',
+                       'mill':    'Miller Cylindrical',
+                       'merc':    'Mercator',
+                       'stere':   'Stereographic',
+                       'eqdc':    'Equidistant Conic',
+                       #'rotpole': 'Rotated Pole',
+                       'cyl':     'Cylindrical Equidistant',
+                       'npstere': 'North-Polar Stereographic',
+                       'spstere': 'South-Polar Stereographic',
+                       'hammer':  'Hammer',
+                       'geos':    'Geostationary',
+                       'nsper':   'Near-Sided Perspective',
+                       'eck4':    'Eckert IV',
+                       'aea':     'Albers Equal Area',
+                       'kav7':    'Kavrayskiy VII',
+                       'spaeqd':  'South-Polar Azimuthal Equidistant',
+                       'ortho':   'Orthographic',
+                       'cass':    'Cassini-Soldner',
+                       'laea':    'Lambert Azimuthal Equal Area',
+                       'splaea':  'South-Polar Lambert Azimuthal',
+                       'robin':   'Robinson'
+                       }
 
     defaults = {
                 'input_file':None,
@@ -1333,6 +1418,7 @@ def _argparse():
                 'pointSize':1,
                 'scale':1,
                 'map_res':'c',
+                'proj':'lcc',
                 'output_file':None,
                 'outputFilePrefix' : None,
                 'dpi':200
@@ -1511,6 +1597,18 @@ def _argparse():
                       [default: '{}']""".format(defaults["map_res"])
                       )
 
+    parser.add_argument('--proj',
+                      action="store",
+                      dest="proj",
+                      default=defaults["proj"],
+                      type=str,
+                      choices=map_proj_choice,
+                      help='''The map projection. Possible values are 
+                      {{{}}}'''.format(
+                          "".join(["'{0:8s} ({1}), ".format(tups[0]+"'",tups[1]) for tups in zip(map_proj_choice.keys(),map_proj_choice.values())])
+                          )
+                      )
+
     parser.add_argument('-o','--output_file',
                       action="store",
                       dest="output_file",
@@ -1549,10 +1647,16 @@ def _argparse():
 
     # Set up the logging
     verbosity = 0 if args.quiet else args.verbosity
-    console_logFormat = '%(asctime)s : (%(levelname)s):%(filename)s:%(funcName)s:%(lineno)d:  %(message)s'
-    dateFormat = '%Y-%m-%d %H:%M:%S'
     levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
     level = levels[min(verbosity,3)]
+
+    if level == logging.DEBUG :
+        console_logFormat = '%(asctime)s.%(msecs)03d (%(levelname)s) : %(filename)s : %(funcName)s : %(lineno)d:%(message)s'
+        dateFormat='%Y-%m-%d %H:%M:%S'
+    else:
+        console_logFormat = '%(asctime)s.%(msecs)03d (%(levelname)s) : %(message)s'
+        dateFormat='%Y-%m-%d %H:%M:%S'
+
     logging.basicConfig(level = level, 
             format = console_logFormat, 
             datefmt = dateFormat)
@@ -1585,6 +1689,7 @@ def main():
     scale = options.scale
     doScatterPlot = options.doScatterPlot
     pointSize = options.pointSize
+    proj = options.proj
     map_res = options.map_res
     output_file  = options.output_file
     outputFilePrefix  = options.outputFilePrefix
@@ -1663,15 +1768,16 @@ def main():
     plot_options['plotMax'] = plotMax
     plot_options['scale'] = scale
     plot_options['map_res'] = map_res
+    plot_options['proj'] = proj
     #plot_options['cmap'] = cmap
     plot_options['scatterPlot'] = doScatterPlot
     plot_options['pointSize'] = pointSize
     plot_options['dpi'] = dpi
 
     # Create the plot
-    plotMapData(lats,lons,data,data_mask,output_file,**plot_options)
+    retval = plotMapData(lats,lons,data,data_mask,output_file,**plot_options)
 
-    return 0
+    return retval
 
 
 if __name__=='__main__':
