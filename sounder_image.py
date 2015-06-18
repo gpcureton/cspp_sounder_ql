@@ -1619,7 +1619,7 @@ def _argparse():
                       dest="bounding_lat",
                       default=defaults["bounding_lat"],
                       type=float,
-                      help='''The minimum/maximum latitude to plot for the npstere/spstere projections. 
+                      help='''The minimum/maximum latitude to plot for the polar projections. 
                       [default: {}]'''.format(defaults["bounding_lat"])
                       )
 
