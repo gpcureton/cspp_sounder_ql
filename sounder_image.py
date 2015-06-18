@@ -1175,6 +1175,7 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
     lonMax        = plot_options['lonMax']
     plotMin       = plot_options['plotMin']
     plotMax       = plot_options['plotMax']
+    bounding_lat  = plot_options['bounding_lat']
     scale         = plot_options['scale']
     map_res       = plot_options['map_res']
     proj          = plot_options['proj']
@@ -1225,18 +1226,49 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
         LOG.info("Setting lat_0 and lon_0 for {} projection.".format(proj))
         lat_0 = 0. if lat_0==None else lat_0
         lon_0 = 0. if lon_0==None else lon_0
+        boundinglat = None
+
+    if (proj=='npstere' and bounding_lat<-30.):
+        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat) 
+         of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -30.
+
+    if (proj=='spstere' and bounding_lat>30.):
+        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat) 
+         of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 30.
+
+    if (proj=='npaeqd' and bounding_lat<-30.):
+        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+         of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -30.
+
+    if (proj=='spaeqd' and bounding_lat>30.):
+        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+         of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 30.
+
+    if (proj=='nplaea' and bounding_lat<=0.):
+        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+         of {} degrees must be in northern hemisphere, setting to +1 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 1.
+
+    if (proj=='splaea' and bounding_lat>=0.):
+        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+         of {} degrees must be in southern hemisphere, setting to -1 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -1.
 
     # Compute the central lat and lon if they are not specified
-    if (lat_0==None) and (lon_0==None):
+    if (lat_0==None) or (lon_0==None):
         geo_shape = lat.shape
         nrows, ncols = geo_shape[0],geo_shape[1]
         LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
         # Non lat/lon pair given, use the central unmasked values.
         row_idx = int(nrows/2.)
         col_idx = int(ncols/2.)
-        lat_0 = lat[row_idx,col_idx]
-        lon_0 = lon[row_idx,col_idx]
-        LOG.info("No lat/lon pair given, using ({:4.2f},{:4.2f})".
+        lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
+        lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
+        LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
                 format(lat_0,lon_0))
 
     if (latMin==None) and (latMax==None):
@@ -1263,28 +1295,49 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
 
     ax = fig.add_axes(ax_rect)
 
+    # Common plotting options...
+    plot_kw = {
+        'ax'         : ax,
+        'projection' : proj,
+        'lon_0'      : lon_0,
+        'lat_0'      : lat_0,
+        'fix_aspect' : True,
+        'resolution' : map_res
+    }
+
+    # Projection dependent plotting options
+    if global_plot:
+        if rect_plot:
+            plot_kw['llcrnrlat'] = -80.
+            plot_kw['urcrnrlat'] = 80.
+            plot_kw['llcrnrlon'] = -180.
+            plot_kw['urcrnrlon'] = 180.
+        else:
+            pass
+    else:
+        LOG.info("scale = {}".format(scale))
+        windowWidth = scale *(0.35*12000000.)
+        windowHeight = scale *(0.50*9000000.)
+        plot_kw['width'] = windowWidth
+        plot_kw['height'] = windowHeight
+
+    if (proj=='npstere' or proj=='spstere' or
+            proj=='nplaea' or proj=='splaea' or
+            proj=='npaeqd' or proj=='spaeqd'):
+        plot_kw['boundinglat'] = bounding_lat
+
+    if ((proj=='aea' or proj=='lcc' or proj=='eqdc') and (np.abs(lat_0)<1.e-6)):
+        plot_kw['lat_1'] = 1.
+        plot_kw['lat_2'] = 1.
+
+    # Create the Basemap plotting object
     LOG.info("Plotting for {} projection...".format(proj))
     try:
-        if global_plot:
-            if rect_plot:
-                m = Basemap(projection=proj,lon_0=lon_0,lat_0=lat_0,
-                        llcrnrlat=-80,urcrnrlat=80,llcrnrlon=-180,urcrnrlon=180,
-                        ax=ax,fix_aspect=True,resolution=map_res)
-            else:
-                m = Basemap(projection=proj,lon_0=lon_0,lat_0=lat_0,
-                        ax=ax,fix_aspect=True,resolution=map_res)
-        else:
-            LOG.info("scale = {}".format(scale))
-            windowWidth = scale *(0.35*12000000.)
-            windowHeight = scale *(0.50*9000000.)
-            m = Basemap(projection=proj,lon_0=lon_0,lat_0=lat_0,
-                    width=windowWidth,height=windowHeight,
-                    #llcrnrlon=lonMin,
-                    #llcrnrlat=latMin,
-                    #urcrnrlon=lonMax,
-                    #urcrnrlat=latMax,
-                    ax=ax,fix_aspect=True,resolution=map_res)
+        m = Basemap(**plot_kw)
     except ValueError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
+    except RuntimeError, err :
             LOG.error("{} ({} projection), aborting.".format(err,proj))
             return 1
 
@@ -1379,28 +1432,28 @@ def _argparse():
                        'moll':    'Mollweide',
                        'lcc':     'Lambert Conformal',
                        'tmerc':   'Transverse Mercator',
-                       #'nplaea':  'North-Polar Lambert Azimuthal',
                        'gall':    'Gall Stereographic Cylindrical',
-                       #'npaeqd':  'North-Polar Azimuthal Equidistant',
                        'mill':    'Miller Cylindrical',
                        'merc':    'Mercator',
                        'stere':   'Stereographic',
                        'eqdc':    'Equidistant Conic',
                        #'rotpole': 'Rotated Pole',
                        'cyl':     'Cylindrical Equidistant',
-                       'npstere': 'North-Polar Stereographic',
-                       'spstere': 'South-Polar Stereographic',
                        'hammer':  'Hammer',
                        'geos':    'Geostationary',
                        'nsper':   'Near-Sided Perspective',
                        'eck4':    'Eckert IV',
                        'aea':     'Albers Equal Area',
                        'kav7':    'Kavrayskiy VII',
+                       'npstere': 'North-Polar Stereographic',
+                       'spstere': 'South-Polar Stereographic',
+                       'nplaea':  'North-Polar Lambert Azimuthal',
+                       'splaea':  'South-Polar Lambert Azimuthal',
+                       'npaeqd':  'North-Polar Azimuthal Equidistant',
                        'spaeqd':  'South-Polar Azimuthal Equidistant',
                        'ortho':   'Orthographic',
                        'cass':    'Cassini-Soldner',
                        'laea':    'Lambert Azimuthal Equal Area',
-                       'splaea':  'South-Polar Lambert Azimuthal',
                        'robin':   'Robinson'
                        }
 
@@ -1414,6 +1467,7 @@ def _argparse():
                 'lat_0':None,
                 'plotMin'  : None,
                 'plotMax'  : None,
+                'bounding_lat':0.,
                 'scatter_plot':False,
                 'pointSize':1,
                 'scale':1,
@@ -1560,6 +1614,15 @@ def _argparse():
                       help="Maximum longitude to plot."
                       )
 
+    parser.add_argument('--bounding_lat',
+                      action="store",
+                      dest="bounding_lat",
+                      default=defaults["bounding_lat"],
+                      type=float,
+                      help='''The minimum/maximum latitude to plot for the npstere/spstere projections. 
+                      [default: {}]'''.format(defaults["bounding_lat"])
+                      )
+
     parser.add_argument('--scatter_plot',
                       action="store_true",
                       dest="doScatterPlot",
@@ -1684,6 +1747,7 @@ def main():
     latMax = options.latMax
     lonMax = options.lonMax
     lonMax = options.lonMax
+    bounding_lat = options.bounding_lat
     plotMin = options.plotMin
     plotMax = options.plotMax
     scale = options.scale
@@ -1764,6 +1828,7 @@ def main():
     plot_options['lonMin'] = lonMin
     plot_options['latMax'] = latMax
     plot_options['lonMax'] = lonMax
+    plot_options['bounding_lat'] = bounding_lat
     plot_options['plotMin'] = plotMin
     plot_options['plotMax'] = plotMax
     plot_options['scale'] = scale
@@ -1777,6 +1842,7 @@ def main():
     # Create the plot
     retval = plotMapData(lats,lons,data,data_mask,output_file,**plot_options)
 
+    print ""
     return retval
 
 
