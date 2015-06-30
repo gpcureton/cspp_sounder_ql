@@ -1271,16 +1271,8 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
         LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
                 format(lat_0,lon_0))
 
-    if (latMin==None) and (latMax==None):
-        LOG.info("Calculating lat extent...")
-        latMin = np.min(lat)
-        latMax = np.max(lat)
-        LOG.info("Latitude extent: ({:4.2f},{:4.2f})".format(latMin,latMax))
-    if (lonMin==None) and (lonMax==None):
-        LOG.info("Calculating lon extent...")
-        lonMin = np.min(lon)
-        lonMax = np.max(lon)
-        LOG.info("Longitude extent: ({:4.2f},{:4.2f})".format(lonMin,lonMax))
+    LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat),np.max(lat)))
+    LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon),np.max(lon)))
 
     # General Setup
     if global_plot:
@@ -1308,10 +1300,10 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
     # Projection dependent plotting options
     if global_plot:
         if rect_plot:
-            plot_kw['llcrnrlat'] = -80.
-            plot_kw['urcrnrlat'] = 80.
-            plot_kw['llcrnrlon'] = -180.
-            plot_kw['urcrnrlon'] = 180.
+            plot_kw['llcrnrlat'] =  -80. if latMin==None else latMin
+            plot_kw['urcrnrlat'] =   80. if latMax==None else latMax
+            plot_kw['llcrnrlon'] = -180. if lonMin==None else lonMin
+            plot_kw['urcrnrlon'] =  180. if lonMax==None else lonMax
         else:
             pass
     else:
@@ -1745,7 +1737,6 @@ def main():
     latMin = options.latMin
     lonMin = options.lonMin
     latMax = options.latMax
-    lonMax = options.lonMax
     lonMax = options.lonMax
     bounding_lat = options.bounding_lat
     plotMin = options.plotMin
