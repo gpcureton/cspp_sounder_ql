@@ -157,13 +157,14 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
 
         nrows, ncols = geo_shape[0],geo_shape[1]
         LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
+        LOG.debug("lat_0,lon_0= ({},{})".format(lat_0,lon_0))
 
-        if (lat_0==None) and (lon_0==None):
+        if (lat_0==None) or (lon_0==None):
             # Non lat/lon pair given, use the central unmasked values.
             row_idx = int(np.floor(nrows/2.))
             col_idx = int(np.floor(ncols/2.))
-            lat_0 = lat[row_idx,col_idx]
-            lon_0 = lon[row_idx,col_idx]
+            lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
+            lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
             LOG.info("No lat/lon pair given, using ({:4.2f},{:4.2f})".
                     format(lat_0,lon_0))
 
@@ -764,8 +765,8 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
                     sounding_inputs[label][attr_name] = attr
 
         row,col = get_geo_indices(lat,lon,lat_0=lat_0,lon_0=lon_0)
+
         if row==None or col==None:
-            #LOG.error("Specified coordinates not found, aborting...")
             raise Exception("No suitable lat/lon coordinates found, aborting...")
              
         LOG.debug("Retrieved row,col = {},{}".format(row,col))
@@ -784,7 +785,6 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
 
         LOG.info("Closing {}".format(nucaps_file))
         fileObj.close()
-        #sys.exit(1)
 
     except Exception, err :
         LOG.warn("There was a problem, closing {}".format(nucaps_file))
@@ -827,6 +827,9 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
             sounding_inputs['temp']['data'],
             sounding_inputs['wvap']['data']
             )
+
+    # In case of over-saturation...
+    dwpt = np.minimum(dwpt,sounding_inputs['temp']['data'])
 
     sounding_inputs['dwpt']['data'] = dwpt
     sounding_inputs['dwpt']['units'] = 'K'
