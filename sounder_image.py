@@ -1415,39 +1415,40 @@ def _argparse():
 
     dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
     prodChoices=['temp','wvap','dwpt','relh']
-    map_proj_choice = ['lcc','ortho','i']
     map_res_choice = ['c','l','i']
-    map_proj_choice = {'cea':     'Cylindrical Equal Area',
-                       'mbtfpq':  'McBryde-Thomas Flat-Polar Quartic',
-                       'sinu':    'Sinusoidal',
-                       'poly':    'Polyconic',
-                       'moll':    'Mollweide',
+    map_proj_choice = {
+                       'cea':     'Cylindrical Equal Area',
                        'lcc':     'Lambert Conformal',
-                       'tmerc':   'Transverse Mercator',
-                       'gall':    'Gall Stereographic Cylindrical',
-                       'mill':    'Miller Cylindrical',
-                       'merc':    'Mercator',
-                       'stere':   'Stereographic',
-                       'eqdc':    'Equidistant Conic',
-                       #'rotpole': 'Rotated Pole',
-                       'cyl':     'Cylindrical Equidistant',
-                       'hammer':  'Hammer',
+                       'ortho':   'Orthographic',
                        'geos':    'Geostationary',
-                       'nsper':   'Near-Sided Perspective',
-                       'eck4':    'Eckert IV',
-                       'aea':     'Albers Equal Area',
-                       'kav7':    'Kavrayskiy VII',
                        'npstere': 'North-Polar Stereographic',
                        'spstere': 'South-Polar Stereographic',
-                       'nplaea':  'North-Polar Lambert Azimuthal',
-                       'splaea':  'South-Polar Lambert Azimuthal',
-                       'npaeqd':  'North-Polar Azimuthal Equidistant',
-                       'spaeqd':  'South-Polar Azimuthal Equidistant',
-                       'ortho':   'Orthographic',
-                       'cass':    'Cassini-Soldner',
-                       'laea':    'Lambert Azimuthal Equal Area',
-                       'robin':   'Robinson'
+                       'cyl':     'Cylindrical Equidistant',
+                       'sinu':    'Sinusoidal',
+                       'merc':    'Mercator'
+                       #'mbtfpq':  'McBryde-Thomas Flat-Polar Quartic',
+                       #'poly':    'Polyconic',
+                       #'moll':    'Mollweide',
+                       #'tmerc':   'Transverse Mercator',
+                       #'gall':    'Gall Stereographic Cylindrical',
+                       #'mill':    'Miller Cylindrical',
+                       #'stere':   'Stereographic',
+                       #'eqdc':    'Equidistant Conic',
+                       ##'rotpole': 'Rotated Pole',
+                       #'hammer':  'Hammer',
+                       #'nsper':   'Near-Sided Perspective',
+                       #'eck4':    'Eckert IV',
+                       #'aea':     'Albers Equal Area',
+                       #'kav7':    'Kavrayskiy VII',
+                       #'nplaea':  'North-Polar Lambert Azimuthal',
+                       #'splaea':  'South-Polar Lambert Azimuthal',
+                       #'npaeqd':  'North-Polar Azimuthal Equidistant',
+                       #'spaeqd':  'South-Polar Azimuthal Equidistant',
+                       #'cass':    'Cassini-Soldner',
+                       #'laea':    'Lambert Azimuthal Equal Area',
+                       #'robin':   'Robinson'
                        }
+
 
     defaults = {
                 'input_file':None,
@@ -1659,8 +1660,9 @@ def _argparse():
                       type=str,
                       choices=map_proj_choice,
                       help='''The map projection. Possible values are 
-                      {{{}}}'''.format(
-                          "".join(["'{0:8s} ({1}), ".format(tups[0]+"'",tups[1]) for tups in zip(map_proj_choice.keys(),map_proj_choice.values())])
+                      {{{}}}. [default: '{}']'''.format(
+                          "".join(["'{0:8s} ({1}), ".format(tups[0]+"'",tups[1]) for tups in zip(map_proj_choice.keys(),map_proj_choice.values())]),
+                          defaults["proj"]
                           )
                       )
 
