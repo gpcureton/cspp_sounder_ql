@@ -191,7 +191,7 @@ optional arguments:
   -h, --help            show this help message and exit
   --dset {temp,wvap,dwpt,relh}
                         The sounder dataset to plot. Possible values are...
-                        'temp', 'wvap', 'dwpt', 'relh'. [default: temp]
+                        'temp', 'wvap', 'dwpt', 'relh', 'ctp','ctt'. [default: temp]
   -S STRIDE, --stride STRIDE
                         Sample every STRIDE pixels in the band data. [default:
                         1]
@@ -298,6 +298,8 @@ relative humidity, skew-T, temperature and water vapor mixing ratio. The Skew-T 
         bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset dwpt --plotMin=250. --plotMax=300. -m 'l' --scatter_plot -P 8; \
         bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset wvap --plotMin=0.   --plotMax=14.  -m 'l' --scatter_plot -P 8 ; \
         bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset relh --plotMin=0.   --plotMax=100. -m 'l' --scatter_plot -P 8 ; \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset ctp -m 'l' --scatter_plot -P 8 ; \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset ctt -m 'l' --scatter_plot -P 8 ; \
         bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_skewt.sh $files HSRTV ; \
     done 
     ```
@@ -314,6 +316,8 @@ relative humidity, skew-T, temperature and water vapor mixing ratio. The Skew-T 
         bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset dwpt --plotMin=250. --plotMax=300. -m 'l' ; \
         bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset wvap --plotMin=0.   --plotMax=14.  -m 'l' ; \
         bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset relh --plotMin=0.   --plotMax=100. -m 'l' ; \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset ctp -m 'l' --scatter_plot -P 8 ; \
+        bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files HSRTV --dset ctt -m 'l' --scatter_plot -P 8 ; \
         bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_skewt.sh $files HSRTV ; \
     done 
     ```
@@ -329,6 +333,8 @@ do \
     bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files IAPP --dset dwpt --plotMin=250. --plotMax=300. -m 'l' ; \
     bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files IAPP --dset wvap --plotMin=0.   --plotMax=14.  -m 'l' ; \
     bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files IAPP --dset relh --plotMin=0.   --plotMax=100. -m 'l' ; \
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files IAPP --dset ctp -m 'l' --scatter_plot -P 8 ; \
+    bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_image.sh $files IAPP --dset ctt -m 'l' --scatter_plot -P 8 ; \
     bash $CSPP_SOUNDER_QL_HOME/scripts/ql_level2_skewt.sh $files IAPP ; \
 done 
 ```

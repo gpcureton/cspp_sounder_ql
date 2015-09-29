@@ -241,6 +241,14 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
             Dew_Point_Temp_Retrieval:long_name = "Dew Point Temperature Retrieval 
                                                   for the IAPP" ;
             Dew_Point_Temp_Retrieval:units = "degrees Kelvin" ;                
+
+    float Cloud_Top_Temperature_CO2(Along_Track, Across_Track, Num_of_FOVs) ;
+        Cloud_Top_Temperature_CO2:long_name = "CO2 Slicing Cloud Top Temperature of the 3x3 box" ;
+        Cloud_Top_Temperature_CO2:units = "K" ;
+
+    float Cloud_Top_Pressure_CO2(Along_Track, Across_Track, Num_of_FOVs) ;
+            Cloud_Top_Pressure_CO2:long_name = "CO2 Slicing Cloud Top Pressure of the 3x3 box" ;
+            Cloud_Top_Pressure_CO2:units = "hPa" ;
     '''
 
     data_labels = [
@@ -249,6 +257,8 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
                     'dwpt',
                     'wvap',
                     'relh',
+                    'ctp',
+                    'ctt',
                     'lat',
                     'lon'
                     ]
@@ -261,6 +271,8 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
     sounding_inputs['temp']['dset_name'] = 'Temperature_Retrieval'
     sounding_inputs['dwpt']['dset_name'] = 'Dew_Point_Temp_Retrieval'
     sounding_inputs['wvap']['dset_name'] = 'WaterVapor_Retrieval'
+    sounding_inputs['ctp']['dset_name']  = 'Cloud_Top_Pressure_CO2'
+    sounding_inputs['ctt']['dset_name']  = 'Cloud_Top_Temperature_CO2'
     sounding_inputs['lat']['dset_name']  = 'Latitude'
     sounding_inputs['lon']['dset_name']  = 'Longitude'
     sounding_inputs['relh'] = None
@@ -286,6 +298,8 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
             sounding_inputs['temp']['node'] = fileObj.variables['Temperature_Retrieval']
             sounding_inputs['dwpt']['node'] = fileObj.variables['Dew_Point_Temp_Retrieval']
             sounding_inputs['wvap']['node'] = fileObj.variables['WaterVapor_Retrieval']
+            sounding_inputs['ctp']['node'] = fileObj.variables['Cloud_Top_Pressure_CO2']
+            sounding_inputs['ctt']['node'] = fileObj.variables['Cloud_Top_Temperature_CO2']
             sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
             sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
 
@@ -338,6 +352,19 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
                 LOG.debug("Intermediate {} shape = {}".format(
                     label,sounding_inputs[label]['data'].shape))
 
+            # Add to the ctp and   ctt and data arrays...
+            for label in ['ctp','ctt']:
+                try :
+                    sounding_inputs[label]['data']  = np.vstack((
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:,4]))
+                    LOG.debug("subsequent arrays...")
+                except KeyError :
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:,4]
+                    LOG.debug("first arrays...")
+
+                LOG.debug("Intermediate {} shape = {}".format(
+                    label,sounding_inputs[label]['data'].shape))
+
             # Add to the temp, dewpoint, water vapour and relative humidity data arrays...
             for label in ['temp','dwpt','wvap']:
                 try :
@@ -370,7 +397,7 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
     LOG.debug("pressure_array.shape =  {}".format(pressure_array.shape))
     
     # Construct the masks of the various datasets
-    for label in ['temp','dwpt','wvap','lat','lon']:
+    for label in ['temp','dwpt','wvap','ctp','ctt','lat','lon']:
         if sounding_inputs[label] != None:
             LOG.debug(">>> Processing {} ..."
                     .format(sounding_inputs[label]['dset_name']))
@@ -668,6 +695,14 @@ def hsrtv_sounder(dr_file_list,pres_0=850.):
         description : retrieved humidity (water vapor mixing ratio) profile at 101 levels
         missing_value : -9999.
         units : g/kg
+    /CTP
+        description : Cloud top pressure
+        missing_value : -9999.
+        units : hPa
+    /CTT
+        description : Cloud top temperature
+        missing_value : -9999.
+        units : K
     '''
 
     data_labels = [
@@ -676,6 +711,8 @@ def hsrtv_sounder(dr_file_list,pres_0=850.):
                     'dwpt',
                     'wvap',
                     'relh',
+                    'ctp',
+                    'ctt',
                     'lat',
                     'lon'
                     ]
@@ -689,6 +726,8 @@ def hsrtv_sounder(dr_file_list,pres_0=850.):
     sounding_inputs['dwpt']['dset_name'] = 'Dewpnt'
     sounding_inputs['relh']['dset_name'] = 'RelHum'
     sounding_inputs['wvap']['dset_name'] = 'H2OMMR'
+    sounding_inputs['ctp']['dset_name']  = 'CTP'
+    sounding_inputs['ctt']['dset_name']  = 'CTT'
     sounding_inputs['lat']['dset_name']  = 'Latitude'
     sounding_inputs['lon']['dset_name']  = 'Longitude'
 
@@ -720,6 +759,8 @@ def hsrtv_sounder(dr_file_list,pres_0=850.):
             sounding_inputs['dwpt']['node'] = fileObj['Dewpnt']
             sounding_inputs['relh']['node'] = fileObj['RelHum']
             sounding_inputs['wvap']['node'] = fileObj['H2OMMR']
+            sounding_inputs['ctp']['node'] = fileObj['CTP']
+            sounding_inputs['ctt']['node'] = fileObj['CTT']
             sounding_inputs['lat']['node'] = fileObj['Latitude']
             sounding_inputs['lon']['node'] = fileObj['Longitude']
 
@@ -764,7 +805,7 @@ def hsrtv_sounder(dr_file_list,pres_0=850.):
                 data_labels.remove('pres')
 
             # Add to the lat and lon and data arrays...
-            for label in ['lat','lon']:
+            for label in ['lat','lon','ctp','ctt']:
                 try :
                     sounding_inputs[label]['data']  = np.vstack((
                         sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:]))
@@ -808,7 +849,7 @@ def hsrtv_sounder(dr_file_list,pres_0=850.):
     LOG.debug("pressure_array.shape =  {}".format(pressure_array.shape))
 
     # Construct the masks of the various datasets
-    for label in ['temp','dwpt','wvap','relh','lat','lon']:
+    for label in ['temp','dwpt','wvap','relh','ctp','ctt','lat','lon']:
         if sounding_inputs[label] != None:
             LOG.debug(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
             fill_value = float(sounding_inputs[label]['missing_value'][0])
@@ -908,6 +949,15 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
             H2O_MR:coordinates = "Time Latitude Longitude Effective_Pressure" ;
             H2O_MR:valid_range = 0.f, 1.e+08f ;
             H2O_MR:_FillValue = -9999.f ;
+
+    float Cloud_Top_Pressure(Number_of_CrIS_FORs, Number_of_Cloud_Layers) ;
+            Cloud_Top_Pressure:long_name = "Cloud top pressure" ;
+            Cloud_Top_Pressure:units = "mb" ;
+            Cloud_Top_Pressure:parameter_type = "NUCAPS data" ;
+            Cloud_Top_Pressure:coordinates = "Time Latitude Longitude" ;
+            Cloud_Top_Pressure:valid_range = 0.f, 10000.f ;
+            Cloud_Top_Pressure:_FillValue = -9999.f ;
+
     '''         
 
     data_labels = [
@@ -1414,7 +1464,7 @@ def _argparse():
     import argparse
 
     dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
-    prodChoices=['temp','wvap','dwpt','relh']
+    prodChoices=['temp','wvap','dwpt','relh','ctp','ctt']
     map_res_choice = ['c','l','i']
     map_proj_choice = {
                        'cea':     'Cylindrical Equal Area',
@@ -1471,7 +1521,7 @@ def _argparse():
                 'dpi':200
                 }
 
-    description = '''Create a contour plot of temperature, dewpoint or something 
+    description = '''Create a plot of temperature, dewpoint or something 
                      else at a particular pressure level. Supports IAPP, MIRS, HSRTV 
                      and NUCAPS files.'''
 
@@ -1702,6 +1752,11 @@ def _argparse():
 
     args = parser.parse_args()
 
+    # Do any parser checking for conditional arguments
+    if args.datatype=='MIRS' or args.datatype=='NUCAPS':
+        if args.dataset=='ctp' or args.dataset=='ctt':
+            parser.error("""Datasets 'ctp' and 'ctt' can only be used with IAPP and HSRTV.""")
+
     # Set up the logging
     verbosity = 0 if args.quiet else args.verbosity
     levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
@@ -1793,11 +1848,16 @@ def main():
             'temp':'temperature (K) @ {:4.2f} hPa'.format(pres_0),
             'wvap':'water vapor mixing ratio (g/kg) @ {:4.2f} hPa'.format(pres_0),
             'dwpt':'dewpoint temperature (K) @ {:4.2f} hPa'.format(pres_0),
-            'relh':'relative humidity (%) @ {:4.2f} hPa'.format(pres_0)
+            'relh':'relative humidity (%) @ {:4.2f} hPa'.format(pres_0),
+            'ctp':'cloud top pressure (hPa)',
+            'ctt':'cloud top temperature (K)'
             }
 
     # Determine the filename
-    file_suffix = "{}_{}_{}mb".format(datatype,dataset,pres_0)
+    if dataset=='ctp' or dataset=='ctt':
+        file_suffix = "{}_{}".format(datatype,dataset)
+    else:
+        file_suffix = "{}_{}_{}mb".format(datatype,dataset,pres_0)
 
     if output_file==None and outputFilePrefix==None :
         output_file = "{}.{}.png".format(input_file,file_suffix)
