@@ -52,12 +52,53 @@ from netCDF4 import Dataset
 from netCDF4 import num2date
 import h5py
 
+from ql_common import Datafile_NetCDF
 from thermo import dewhum
 
 # every module should have a LOG object
 LOG = logging.getLogger(__file__)
 
-def sounder_image(iapp_file_list,pres_0=850.):
+
+# Global Data
+
+data_labels = [
+                'pres',
+                'temp',
+                'dwpt',
+                'wvap',
+                'relh',
+                'ctp',
+                'ctt',
+                'lat',
+                'lon'
+                ]
+
+data_id['pres'] = 'Pressure_Levels'
+data_id['temp'] = 'Temperature_Retrieval'
+data_id['dwpt'] = 'Dew_Point_Temp_Retrieval'
+data_id['wvap'] = 'WaterVapor_Retrieval'
+data_id['ctp']  = 'Cloud_Top_Pressure_CO2'
+data_id['ctt']  = 'Cloud_Top_Temperature_CO2'
+data_id['lat']  = 'Latitude'
+data_id['lon']  = 'Longitude'
+data_id['relh'] = None
+
+data_dep['pres'] = []
+data_dep['temp'] = []
+data_dep['dwpt'] = []
+data_dep['wvap'] = []
+data_dep['ctp']  = []
+data_dep['ctt']  = []
+data_dep['lat']  = []
+data_dep['lon']  = []
+data_dep['relh'] = ['temp','wvap']
+
+
+def get_dataset(file_obj,label):
+    pass
+
+
+def sounder(iapp_file_list,pres_0=850.):
     '''
     Pressure_Levels: Pressure for each level in mb (hPa)
     Temperature_Retrieval: Temperature profile in K

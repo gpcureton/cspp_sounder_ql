@@ -5,7 +5,7 @@
 # Copyright 2011-2013, University of Wisconsin Regents.
 # Licensed under the GNU GPLv3.
 
-test -n "$CSPP_SOUNDER_QL_HOME" || echo "CSPP_IAPP_HOME is not set. Please set this environment variable to the install location of CSPP software packages."
+test -n "$CSPP_SOUNDER_QL_HOME" || echo "CSPP_SOUNDER_QL_HOME is not set. Please set this environment variable to the install location of CSPP software packages."
 
 export DPE_VER=CSPP_SOUNDER_QL_1_0
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # $Id$
-# Environment script for CSPP / IAPP
+# Environment script for CSPP / SOUNDER_QL
 
 
 test -n "$CSPP_SOUNDER_QL_HOME" || echo "CSPP_SOUNDER_QL_HOME is not set. Please set this environment variable to the install location of CSPP software packages."

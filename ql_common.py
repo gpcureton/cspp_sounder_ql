@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # encoding: utf-8
 """
-ql_geocat_common.py
+ql_common.py
 
-Purpose: Common methods for level 1 and level 2 plots from geocat output.
+Purpose: Common methods for datafile I/O, plots etc...
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2015-03-04.
 Copyright (c) 2015 University of Wisconsin Regents. All rights reserved.
@@ -37,6 +37,7 @@ from numpy import ma
 import copy
 
 from scipy import vectorize
+import scipy.spatial as ss
 
 import matplotlib
 import matplotlib.cm as cm
@@ -56,8 +57,9 @@ from mpl_toolkits.basemap import Basemap
 from pyhdf.SD import SD
 from netCDF4 import Dataset
 from netCDF4 import num2date
+import h5py
 
-from basemap_utils import drawparallels,drawmeridians
+#from basemap_utils import drawparallels,drawmeridians
 
 # every module should have a LOG object
 LOG = logging.getLogger(__file__)
@@ -67,14 +69,14 @@ def _tuple2args(parms):
     s = ' '.join( '+%s=%s' % (k,v) for (k,v) in parms )
     return s.encode('ascii')
 
-class GOES_HDF4():
+class Datafile_HDF4():
 
     def __init__(self,input_file):
 
 
         self.input_file = input_file
 
-        LOG.debug('Opening {} with GOES_HDF4...'.format(self.input_file))
+        LOG.debug('Opening {} with HDF4...'.format(self.input_file))
         self.file_obj = SD(self.input_file)
         
         # Dictionary of file object attributes
@@ -106,7 +108,7 @@ class GOES_HDF4():
         self.file_obj.end()
 
 
-class GOES_NetCDF():
+class Datafile_NetCDF():
 
     def __init__(self,input_file):
 
@@ -114,7 +116,7 @@ class GOES_NetCDF():
         self.input_file = input_file
 
         if os.path.exists(self.input_file):
-            LOG.debug('Opening {} with GOES_NetCDF...'.format(self.input_file))
+            LOG.debug('Opening {} with NetCDF...'.format(self.input_file))
             self.file_obj = Dataset(self.input_file)
         else:
             LOG.error('Input file {} does not exist, aborting...'.format(self.input_file))
@@ -153,6 +155,205 @@ class GOES_NetCDF():
         LOG.debug('Closing {}...'.format(self.input_file))
         self.file_obj.close()
 
+
+class Datafile_HDF5():
+
+    def __init__(self,input_file):
+
+
+        self.input_file = input_file
+
+        if h5py.is_hdf5(self.input_file):
+            LOG.debug('Opening {} with HDF5...'.format(self.input_file))
+            self.file_obj = h5py.File(self.input_file,'r')
+        else:
+            LOG.error('Input file {} does not exist, aborting...'.format(self.input_file))
+            sys.exit(1)
+
+        # Dictionary of file object attributes
+        self.attrs = {}
+        for attr_key in self.file_obj.attrs.keys():
+            self.attrs[attr_key] = self.file_obj.attrs[attr_key][0]
+        
+        # Dictionary of dataset objects
+        self.data_dict = {}
+        for dset_obj in self.file_obj.values():
+            key = dset_obj.name
+            self.data_dict[key] = dset_obj
+
+        # List of dataset names
+        self.datanames = self.file_obj.keys()
+        self.datanames.sort()
+
+
+    class Dataset():
+
+        def __init__(selfd,dfile_obj,dataname):
+
+            selfd.dataname = dataname
+            LOG.debug("selfd.dataname = {}".format(selfd.dataname))
+
+            selfd.dset_obj = dfile_obj.data_dict[dataname]
+
+            selfd.attrs = {}
+            for attr_key in selfd.dset_obj.attrs.keys():
+                selfd.attrs[attr_key] = selfd.dset_obj.attrs[attr_key][0]
+            
+            if 'missing_value' in selfd.attrs.keys():
+                selfd.dset = ma.masked_equal(selfd.dset_obj[:],
+                        float(selfd.attrs['missing_value']))
+            else:
+                selfd.dset = selfd.dset_obj[:]
+
+
+    def close(self):
+        LOG.debug('Closing {}...'.format(self.input_file))
+        self.file_obj.close()
+
+
+def granuleFiles(prodGlob):
+    '''
+    Returns sorted lists of the geolocation and product files.
+    '''
+    
+    prodDir = path.dirname(path.abspath(path.expanduser(prodGlob)))
+
+    LOG.debug("Initial prodGlob = {}".format(prodGlob))
+
+    prodGlob = path.basename(path.abspath(path.expanduser(prodGlob)))
+
+    LOG.debug("prodDir = {}".format(prodDir))
+    LOG.debug("prodGlob = {}".format(prodGlob))
+
+    prodList = glob("%s/%s" % (prodDir,prodGlob))
+    prodList.sort()
+    
+    return prodList
+
+
+def get_pressure_index(pressure,pres_0=850.,kd_dist=10.):
+    '''
+    Get the indices in the pressure level array closes to the desired
+    pressure. If no pressure is specified, use the closest to 850mb. 
+    Uses kd-tree.
+    '''
+
+    try:
+        pres_shape = pressure.shape
+
+        nlevels = pres_shape[0]
+        LOG.debug("nlevels= {}".format(nlevels))
+
+        pres_mask = pressure.mask if ma.is_masked(pressure) \
+                else np.zeros(pressure.shape,dtype='bool')
+
+
+        pressure_masked = ma.array(pressure,mask=pres_mask)
+        pressure_masked = pressure_masked.compressed()
+
+        levels = np.arange(nlevels)
+        levels_masked = ma.array(levels,mask=pres_mask)
+        levels_masked = levels_masked.compressed()
+
+        LOG.debug("There are {} masked pressure levels".\
+                format(np.sum(pres_mask)))
+
+        LOG.info("Searching for pressure {:4.2f}".format(pres_0))
+
+        # Construct the kdtree
+        points = zip(pressure_masked)
+        tree = ss.KDTree(points)
+
+        # get index of each point which distance from (lon_0,lat_0) is under 1
+        a = tree.query_ball_point([pres_0], kd_dist)
+        if a == []:
+            LOG.warn("Specified pressure {:4.2f} not found...".\
+                    format(pres_0))
+            return None
+
+        level = [levels_masked[i] for i in a][0]
+
+        LOG.debug("Level index is {}".format(level))
+        
+        LOG.info("Retrieved pressure is {:4.2f} mb".\
+                format(pressure[level].squeeze()))
+
+    except Exception, err :
+        LOG.warn("{}".format(err))
+        LOG.debug(traceback.format_exc())
+
+    return level
+
+
+def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
+    '''
+    Get the indices in the lat and lon arrays closes to the desired
+    latitude and longitude. If no lat and lon are specified, try to select 
+    the central indices. Uses kd-tree.
+    '''
+
+    try:
+        geo_shape = lat.shape
+
+        nrows, ncols = geo_shape[0],geo_shape[1]
+        LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
+        LOG.debug("lat_0,lon_0= ({},{})".format(lat_0,lon_0))
+
+        if (lat_0==None) or (lon_0==None):
+            # Non lat/lon pair given, use the central unmasked values.
+            row_idx = int(np.floor(nrows/2.))
+            col_idx = int(np.floor(ncols/2.))
+            lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
+            lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
+            LOG.info("No lat/lon pair given, using ({:4.2f},{:4.2f})".
+                    format(lat_0,lon_0))
+
+        lat_mask = lat.mask if ma.is_masked(lat) else np.zeros(lat.shape,dtype='bool')
+        lon_mask = lon.mask if ma.is_masked(lon) else np.zeros(lon.shape,dtype='bool')
+        geo_mask = lat_mask + lon_mask
+
+        lat_masked = ma.array(lat,mask=geo_mask).ravel()
+        lon_masked = ma.array(lon,mask=geo_mask).ravel()
+        lat_masked = lat_masked.compressed()
+        lon_masked = lon_masked.compressed()
+
+        rows, cols = np.mgrid[0:nrows, 0:ncols]
+        cols_masked = ma.array(cols,mask=geo_mask).ravel()
+        rows_masked = ma.array(rows,mask=geo_mask).ravel()
+        cols_masked = cols_masked.compressed()
+        rows_masked = rows_masked.compressed()
+
+        LOG.debug("There are {} masked latitude values".format(np.sum(lat_mask)))
+        LOG.debug("There are {} masked longitude values".format(np.sum(lon_mask)))
+
+        LOG.info("Searching for lat,lon coordinate ({:4.2f},{:4.2f})".\
+                format(lat_0,lon_0))
+
+        # Construct the kdtree
+        points = zip(lon_masked, lat_masked)
+        tree = ss.KDTree(points)
+
+        # get index of each point which distance from (lon_0,lat_0) is under 1
+        a = tree.query_ball_point([lon_0, lat_0], 1.0)
+        if a == []:
+            LOG.error("Specified coordinates ({:4.2f},{:4.2f}) not found...".\
+                    format(lat_0,lon_0))
+            return None,None
+
+        row = [rows_masked[i] for i in a][0]
+        col = [cols_masked[i] for i in a][0]
+
+        LOG.debug("Row index is {}".format(row))
+        LOG.debug("Col index is {}".format(col))
+        
+        LOG.debug("Retrieved latitude is {:4.2f}".format(lat[row,col].squeeze()))
+        LOG.debug("Retrieved longitude is {:4.2f}".format(lon[row,col].squeeze()))
+
+    except Exception, err :
+        LOG.warn("{}".format(err))
+        LOG.debug(traceback.format_exc())
+
+    return row,col
 
 def set_plot_navigation_proj(lats,lons,goes_l1_obj, options):
     """
@@ -235,7 +436,7 @@ def set_plot_navigation_proj(lats,lons,goes_l1_obj, options):
     return plot_nav_options
 
 
-def set_plot_navigation_bm(lats,lons,goes_l1_obj, options):
+def set_plot_navigation_bm(lats,lons,dfile_obj, options):
     """
     Collects the various navigation options and does any required tweaking
     before passing to the plotting method.
@@ -254,9 +455,10 @@ def set_plot_navigation_bm(lats,lons,goes_l1_obj, options):
     for crnr,crnr_idx in zip(range(4),corners):
         LOG.debug("({}) (lon,lat):({},{})".format(crnr,lons[crnr_idx],lats[crnr_idx]))
 
+    return {}
 
-    subsatellite_longitude = goes_l1_obj.attrs['Subsatellite_Longitude']
-    LOG.info('File subsatellite_Longitude = {:6.1f}'.format(subsatellite_longitude))
+    #subsatellite_longitude = goes_l1_obj.attrs['Subsatellite_Longitude']
+    #LOG.info('File subsatellite_Longitude = {:6.1f}'.format(subsatellite_longitude))
 
     m1 = Basemap(projection='geos',lon_0=subsatellite_longitude,resolution=None)
 
@@ -404,11 +606,627 @@ def set_plot_navigation_bm(lats,lons,goes_l1_obj, options):
     return plot_nav_options
 
 
-def set_plot_styles(goes_obj, data_obj, dataset_options, options, plot_nav_options):
+def plotData(data,data_mask,units,pngName,stride=1,dpi=200):
+    '''
+    Plot the input dataset in swath projection
+    '''
+
+    # General Setup
+    dataShape = data.shape
+    aspectRatio = float(dataShape[0])/float(dataShape[1])
+
+    figWidth,figHeight = 4.,aspectRatio*4.
+    ax_rect = [0.05, 0.15, 0.90, 0.80  ] # [left,bottom,width,height]
+
+    fig = Figure(figsize=(figWidth,figHeight))
+    canvas = FigureCanvas(fig)
+
+    ax = fig.add_axes(ax_rect)
+
+    data = ma.array(data,mask=data_mask)
+
+    im = ax.imshow(data,interpolation='nearest')
+
+    if units == '%':
+        txt = ax.set_title('Reflectance')
+    elif units == 'K':
+        txt = ax.set_title('Brightness Temperature')
+    else:
+        txt = ax.set_title('scaled data')
+
+
+    ppl.setp(ax.get_xticklines(),visible=False)
+    ppl.setp(ax.get_yticklines(),visible=False)
+    ppl.setp(ax.get_xticklabels(), visible=False)
+    ppl.setp(ax.get_yticklabels(), visible=False)
+
+    ax.set_aspect('equal')
+
+    cax_rect = [0.05 , 0.05, 0.90 , 0.05 ] # [left,bottom,width,height]
+    cax = fig.add_axes(cax_rect,frameon=False) # setup colorbar axes
+    cb = fig.colorbar(im, cax=cax, orientation='horizontal')
+
+    if units == '%':
+        txt = cax.set_title('Reflectance (%)')
+    elif units == 'K':
+        txt = cax.set_title('Brightness Temperature (K)')
+    else:
+        txt = cax.set_title('scaled units')
+
+    # Redraw the figure
+    canvas.draw()
+    canvas.print_figure(pngName,dpi=dpi)
+
+
+def plotMapDataContinuous(lat, lon, data, pngName,
+        dataset_options, plot_style_options, plot_options):
+        
+    # Copy the plot options to local variables
+    #title         = plot_options['title']
+    #cbar_title    = plot_options['cbar_title']
+    #units         = plot_options['units']
+    #stride        = plot_options['stride']
+    lat_0         = plot_options['lat_0']
+    lon_0         = plot_options['lon_0']
+    #pres_0        = plot_options['pres_0']
+    latMin        = plot_options['latMin']
+    lonMin        = plot_options['lonMin']
+    latMax        = plot_options['latMax']
+    lonMax        = plot_options['lonMax']
+    #plotMin       = plot_options['plotMin']
+    #plotMax       = plot_options['plotMax']
+    bounding_lat  = plot_options['bounding_lat']
+    scale         = plot_options['scale']
+    #map_res       = plot_options['map_res']
+    proj          = plot_options['proj']
+    #cmap          = plot_options['cmap']
+    #doScatterPlot = plot_options['scatterPlot']
+    #pointSize     = plot_options['pointSize']
+    #dpi           = plot_options['dpi']
+
+    # Copy the plot options to local variables
+    #llcrnrx        = plot_nav_options['llcrnrx']
+    #llcrnry        = plot_nav_options['llcrnry']
+    #urcrnrx        = plot_nav_options['urcrnrx']
+    #urcrnry        = plot_nav_options['urcrnry']
+
+    #lon_0         = plot_nav_options['lon_0']
+
+    title         = plot_style_options['title']
+    cbar_title    = plot_style_options['cbar_title']
+    stride        = plot_style_options['stride']
+    plotMin       = plot_style_options['plotMin']
+    plotMax       = plot_style_options['plotMax']
+    plotLims      = plot_style_options['plotLims']
+
+    map_axis      = plot_style_options['map_axis']
+    cbar_axis     = plot_style_options['cbar_axis']
+    image_size    = plot_style_options['image_size']
+
+    map_res       = plot_style_options['map_res']
+    cmap          = plot_style_options['cmap']
+    doScatterPlot = plot_style_options['scatterPlot']
+    pointSize     = plot_style_options['pointSize']
+    font_scale    = plot_style_options['font_scale']
+    log_plot      = plot_style_options['log_plot']
+    dpi           = plot_style_options['dpi']
+
+    '''
+    Plot the input dataset in mapped to particular projection
+    '''
+
+    # If our data is all missing, return
+    data_mask = data.mask
+    if (np.sum(data_mask) == data.size):
+        LOG.warn("Entire {} dataset is missing, aborting".\
+                format(cbar_title))
+        return -1
+
+    # Determine if this is a global projection, so we can avoid having the 
+    # global "outset" plot.
+    global_plot = False
+    if (proj=='moll' 
+            or proj=='hammer'
+            or proj=='robin'
+            or proj=='eck4'
+            or proj=='kav7'
+            or proj=='mbtfpq'
+            or proj=='sinu'
+            or proj=='cyl'
+            or proj=='merc'
+            or proj=='mill'
+            or proj=='gall'
+            or proj=='cea'
+            or proj=='vandg'):
+        global_plot = True
+
+    # Determine if this is a "rectangular" projection, so we can set sensible 
+    # latitude limits.
+    rect_plot = False
+    if (proj=='cyl'
+            or proj=='merc'
+            or proj=='mill'
+            or proj=='gall'
+            or proj=='cea'):
+        rect_plot = True
+
+    if (proj=='geos' or proj=='ortho' or global_plot):
+        LOG.info("Setting lat_0 and lon_0 for {} projection.".format(proj))
+        lat_0 = 0. if lat_0==None else lat_0
+        lon_0 = 0. if lon_0==None else lon_0
+        boundinglat = None
+
+    if (proj=='npstere' and bounding_lat<-30.):
+        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat) 
+         of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -30.
+
+    if (proj=='spstere' and bounding_lat>30.):
+        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat) 
+         of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 30.
+
+    if (proj=='npaeqd' and bounding_lat<-30.):
+        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+         of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -30.
+
+    if (proj=='spaeqd' and bounding_lat>30.):
+        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+         of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 30.
+
+    if (proj=='nplaea' and bounding_lat<=0.):
+        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+         of {} degrees must be in northern hemisphere, setting to +1 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 1.
+
+    if (proj=='splaea' and bounding_lat>=0.):
+        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+         of {} degrees must be in southern hemisphere, setting to -1 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -1.
+
+    # Compute the central lat and lon if they are not specified
+    if (lat_0==None) or (lon_0==None):
+        geo_shape = lat.shape
+        nrows, ncols = geo_shape[0],geo_shape[1]
+        LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
+        # Non lat/lon pair given, use the central unmasked values.
+        row_idx = int(nrows/2.)
+        col_idx = int(ncols/2.)
+        lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
+        lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
+        LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
+                format(lat_0,lon_0))
+
+    LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat),np.max(lat)))
+    LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon),np.max(lon)))
+
+    # General Setup
+    if global_plot:
+        figWidth,figHeight = 10.,6.
+        ax_rect = [0.05, 0.17, 0.90, 0.72  ] # [left,bottom,width,height]
+    else:
+        figWidth,figHeight = 8.,8.
+        ax_rect = [0.05, 0.15, 0.90, 0.75  ] # [left,bottom,width,height]
+
+    fig = Figure(figsize=(figWidth,figHeight))
+    canvas = FigureCanvas(fig)
+
+    ax = fig.add_axes(ax_rect)
+
+    # Common plotting options...
+    plot_kw = {
+        'ax'         : ax,
+        'projection' : proj,
+        'lon_0'      : lon_0,
+        'lat_0'      : lat_0,
+        'fix_aspect' : True,
+        'resolution' : map_res
+    }
+
+    # Projection dependent plotting options
+    if global_plot:
+        if rect_plot:
+            plot_kw['llcrnrlat'] =  -80. if latMin==None else latMin
+            plot_kw['urcrnrlat'] =   80. if latMax==None else latMax
+            plot_kw['llcrnrlon'] = -180. if lonMin==None else lonMin
+            plot_kw['urcrnrlon'] =  180. if lonMax==None else lonMax
+        else:
+            pass
+    else:
+        LOG.info("scale = {}".format(scale))
+        windowWidth = scale *(0.35*12000000.)
+        windowHeight = scale *(0.50*9000000.)
+        plot_kw['width'] = windowWidth
+        plot_kw['height'] = windowHeight
+
+    if (proj=='npstere' or proj=='spstere' or
+            proj=='nplaea' or proj=='splaea' or
+            proj=='npaeqd' or proj=='spaeqd'):
+        plot_kw['boundinglat'] = bounding_lat
+
+    if ((proj=='aea' or proj=='lcc' or proj=='eqdc') and (np.abs(lat_0)<1.e-6)):
+        plot_kw['lat_1'] = 1.
+        plot_kw['lat_2'] = 1.
+
+    # Create the Basemap plotting object
+    LOG.info("Plotting for {} projection...".format(proj))
+    try:
+        m = Basemap(**plot_kw)
+    except ValueError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
+    except RuntimeError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
+
+    x,y=m(lon[::stride,::stride],lat[::stride,::stride])
+
+    m.drawcoastlines(linewidth = 0.5)
+    m.drawcountries(linewidth = 0.5)
+    m.fillcontinents(color='0.85',zorder=0)
+    m.drawparallels(np.arange( -90, 91,30), color = '0.25', 
+            linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
+    m.drawmeridians(np.arange(-180,180,30), color = '0.25', 
+            linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
+
+    data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
+
+    plotMin = np.min(data) if plotMin==None else plotMin
+    plotMax = np.max(data) if plotMax==None else plotMax
+    LOG.debug("plotMin = {}".format(plotMin))
+    LOG.debug("plotMax = {}".format(plotMax))
+
+    if doScatterPlot:
+        cs = m.scatter(x,y,s=pointSize,c=data,axes=ax,edgecolors='none',
+                vmin=plotMin,vmax=plotMax)
+    else:
+        cs = m.pcolor(x,y,data,axes=ax,edgecolors='none',antialiased=False,
+                vmin=plotMin,vmax=plotMax)
+
+    txt = ax.set_title(title,fontsize=11,y=1.04)
+
+    ppl.setp(ax.get_xticklines(),visible=False)
+    ppl.setp(ax.get_yticklines(),visible=False)
+    ppl.setp(ax.get_xticklabels(), visible=False)
+    ppl.setp(ax.get_yticklabels(), visible=False)
+
+    cax_rect = [0.05 , 0.05, 0.90 , 0.05 ] # [left,bottom,width,height]
+    cax = fig.add_axes(cax_rect,frameon=False) # setup colorbar axes
+    cb = fig.colorbar(cs, cax=cax, orientation='horizontal')
+
+    txt = cax.set_title(cbar_title)
+
+    #
+    # Add a small globe with the swath indicated on it #
+    #
+    if not global_plot:
+        # Create main axes instance, leaving room for colorbar at bottom,
+        # and also get the Bbox of the axes instance
+        glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
+        glax = fig.add_axes(glax_rect)
+
+        m_globe = Basemap(lat_0=0.,lon_0=0.,\
+            ax=glax,resolution='c',area_thresh=10000.,projection='robin')
+
+        # If we previously had a zero size data array, increase the pointSize
+        # so the data points are visible on the global plot
+        if (np.shape(lon[::stride,::stride])[0]==2) :
+            pointSize = 5.
+
+        x,y=m_globe(lon[::stride,::stride],lat[::stride,::stride])
+        swath = np.zeros(np.shape(x),dtype=int)
+
+        m_globe.drawmapboundary(linewidth=0.1)
+        m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
+        m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
+
+        p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
+    else:
+        pass
+
+
+    # Redraw the figure
+    canvas.draw()
+    LOG.info("Writing image file {}".format(pngName))
+    canvas.print_figure(pngName,dpi=dpi)
+
+    return 0
+
+
+def plotMapDataDiscrete(lat, lon, data, pngName,
+        dataset_options, plot_style_options, plot_options):
+        
+    # Copy the plot options to local variables
+    #title         = plot_options['title']
+    #cbar_title    = plot_options['cbar_title']
+    #units         = plot_options['units']
+    #stride        = plot_options['stride']
+    lat_0         = plot_options['lat_0']
+    lon_0         = plot_options['lon_0']
+    #pres_0        = plot_options['pres_0']
+    latMin        = plot_options['latMin']
+    lonMin        = plot_options['lonMin']
+    latMax        = plot_options['latMax']
+    lonMax        = plot_options['lonMax']
+    #plotMin       = plot_options['plotMin']
+    #plotMax       = plot_options['plotMax']
+    bounding_lat  = plot_options['bounding_lat']
+    scale         = plot_options['scale']
+    #map_res       = plot_options['map_res']
+    proj          = plot_options['proj']
+    #cmap          = plot_options['cmap']
+    #doScatterPlot = plot_options['scatterPlot']
+    #pointSize     = plot_options['pointSize']
+    #dpi           = plot_options['dpi']
+
+    # Copy the plot options to local variables
+    #llcrnrx        = plot_nav_options['llcrnrx']
+    #llcrnry        = plot_nav_options['llcrnry']
+    #urcrnrx        = plot_nav_options['urcrnrx']
+    #urcrnry        = plot_nav_options['urcrnry']
+
+    #lon_0         = plot_nav_options['lon_0']
+
+    title         = plot_style_options['title']
+    cbar_title    = plot_style_options['cbar_title']
+    stride        = plot_style_options['stride']
+    plotMin       = plot_style_options['plotMin']
+    plotMax       = plot_style_options['plotMax']
+    plotLims      = plot_style_options['plotLims']
+
+    map_axis      = plot_style_options['map_axis']
+    cbar_axis     = plot_style_options['cbar_axis']
+    image_size    = plot_style_options['image_size']
+
+    map_res       = plot_style_options['map_res']
+    cmap          = plot_style_options['cmap']
+    doScatterPlot = plot_style_options['scatterPlot']
+    pointSize     = plot_style_options['pointSize']
+    font_scale    = plot_style_options['font_scale']
+    log_plot      = plot_style_options['log_plot']
+    dpi           = plot_style_options['dpi']
+
+    '''
+    Plot the input dataset in mapped to particular projection
+    '''
+
+    # If our data is all missing, return
+    data_mask = data.mask
+    if (np.sum(data_mask) == data.size):
+        LOG.warn("Entire {} dataset is missing, aborting".\
+                format(cbar_title))
+        return -1
+
+    # Determine if this is a global projection, so we can avoid having the 
+    # global "outset" plot.
+    global_plot = False
+    if (proj=='moll' 
+            or proj=='hammer'
+            or proj=='robin'
+            or proj=='eck4'
+            or proj=='kav7'
+            or proj=='mbtfpq'
+            or proj=='sinu'
+            or proj=='cyl'
+            or proj=='merc'
+            or proj=='mill'
+            or proj=='gall'
+            or proj=='cea'
+            or proj=='vandg'):
+        global_plot = True
+
+    # Determine if this is a "rectangular" projection, so we can set sensible 
+    # latitude limits.
+    rect_plot = False
+    if (proj=='cyl'
+            or proj=='merc'
+            or proj=='mill'
+            or proj=='gall'
+            or proj=='cea'):
+        rect_plot = True
+
+    if (proj=='geos' or proj=='ortho' or global_plot):
+        LOG.info("Setting lat_0 and lon_0 for {} projection.".format(proj))
+        lat_0 = 0. if lat_0==None else lat_0
+        lon_0 = 0. if lon_0==None else lon_0
+        boundinglat = None
+
+    if (proj=='npstere' and bounding_lat<-30.):
+        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat) 
+         of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -30.
+
+    if (proj=='spstere' and bounding_lat>30.):
+        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat) 
+         of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 30.
+
+    if (proj=='npaeqd' and bounding_lat<-30.):
+        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+         of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -30.
+
+    if (proj=='spaeqd' and bounding_lat>30.):
+        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+         of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 30.
+
+    if (proj=='nplaea' and bounding_lat<=0.):
+        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+         of {} degrees must be in northern hemisphere, setting to +1 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 1.
+
+    if (proj=='splaea' and bounding_lat>=0.):
+        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+         of {} degrees must be in southern hemisphere, setting to -1 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -1.
+
+    # Compute the central lat and lon if they are not specified
+    if (lat_0==None) or (lon_0==None):
+        geo_shape = lat.shape
+        nrows, ncols = geo_shape[0],geo_shape[1]
+        LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
+        # Non lat/lon pair given, use the central unmasked values.
+        row_idx = int(nrows/2.)
+        col_idx = int(ncols/2.)
+        lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
+        lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
+        LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
+                format(lat_0,lon_0))
+
+    LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat),np.max(lat)))
+    LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon),np.max(lon)))
+
+    # General Setup
+    if global_plot:
+        figWidth,figHeight = 10.,6.
+        ax_rect = [0.05, 0.17, 0.90, 0.72  ] # [left,bottom,width,height]
+    else:
+        figWidth,figHeight = 8.,8.
+        ax_rect = [0.05, 0.15, 0.90, 0.75  ] # [left,bottom,width,height]
+
+    fig = Figure(figsize=(figWidth,figHeight))
+    canvas = FigureCanvas(fig)
+
+    ax = fig.add_axes(ax_rect)
+
+    # Common plotting options...
+    plot_kw = {
+        'ax'         : ax,
+        'projection' : proj,
+        'lon_0'      : lon_0,
+        'lat_0'      : lat_0,
+        'fix_aspect' : True,
+        'resolution' : map_res
+    }
+
+    # Projection dependent plotting options
+    if global_plot:
+        if rect_plot:
+            plot_kw['llcrnrlat'] =  -80. if latMin==None else latMin
+            plot_kw['urcrnrlat'] =   80. if latMax==None else latMax
+            plot_kw['llcrnrlon'] = -180. if lonMin==None else lonMin
+            plot_kw['urcrnrlon'] =  180. if lonMax==None else lonMax
+        else:
+            pass
+    else:
+        LOG.info("scale = {}".format(scale))
+        windowWidth = scale *(0.35*12000000.)
+        windowHeight = scale *(0.50*9000000.)
+        plot_kw['width'] = windowWidth
+        plot_kw['height'] = windowHeight
+
+    if (proj=='npstere' or proj=='spstere' or
+            proj=='nplaea' or proj=='splaea' or
+            proj=='npaeqd' or proj=='spaeqd'):
+        plot_kw['boundinglat'] = bounding_lat
+
+    if ((proj=='aea' or proj=='lcc' or proj=='eqdc') and (np.abs(lat_0)<1.e-6)):
+        plot_kw['lat_1'] = 1.
+        plot_kw['lat_2'] = 1.
+
+    # Create the Basemap plotting object
+    LOG.info("Plotting for {} projection...".format(proj))
+    try:
+        m = Basemap(**plot_kw)
+    except ValueError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
+    except RuntimeError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
+
+    x,y=m(lon[::stride,::stride],lat[::stride,::stride])
+
+    m.drawcoastlines(linewidth = 0.5)
+    m.drawcountries(linewidth = 0.5)
+    m.fillcontinents(color='0.85',zorder=0)
+    m.drawparallels(np.arange( -90, 91,30), color = '0.25', 
+            linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
+    m.drawmeridians(np.arange(-180,180,30), color = '0.25', 
+            linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
+
+    data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
+
+    plotMin = np.min(data) if plotMin==None else plotMin
+    plotMax = np.max(data) if plotMax==None else plotMax
+    LOG.debug("plotMin = {}".format(plotMin))
+    LOG.debug("plotMax = {}".format(plotMax))
+
+    if doScatterPlot:
+        cs = m.scatter(x,y,s=pointSize,c=data,axes=ax,edgecolors='none',
+                vmin=plotMin,vmax=plotMax)
+    else:
+        cs = m.pcolor(x,y,data,axes=ax,edgecolors='none',antialiased=False,
+                vmin=plotMin,vmax=plotMax)
+
+    txt = ax.set_title(title,fontsize=11,y=1.04)
+
+    ppl.setp(ax.get_xticklines(),visible=False)
+    ppl.setp(ax.get_yticklines(),visible=False)
+    ppl.setp(ax.get_xticklabels(), visible=False)
+    ppl.setp(ax.get_yticklabels(), visible=False)
+
+    cax_rect = [0.05 , 0.05, 0.90 , 0.05 ] # [left,bottom,width,height]
+    cax = fig.add_axes(cax_rect,frameon=False) # setup colorbar axes
+    cb = fig.colorbar(cs, cax=cax, orientation='horizontal')
+
+    txt = cax.set_title(cbar_title)
+
+    #
+    # Add a small globe with the swath indicated on it #
+    #
+    if not global_plot:
+        # Create main axes instance, leaving room for colorbar at bottom,
+        # and also get the Bbox of the axes instance
+        glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
+        glax = fig.add_axes(glax_rect)
+
+        m_globe = Basemap(lat_0=0.,lon_0=0.,\
+            ax=glax,resolution='c',area_thresh=10000.,projection='robin')
+
+        # If we previously had a zero size data array, increase the pointSize
+        # so the data points are visible on the global plot
+        if (np.shape(lon[::stride,::stride])[0]==2) :
+            pointSize = 5.
+
+        x,y=m_globe(lon[::stride,::stride],lat[::stride,::stride])
+        swath = np.zeros(np.shape(x),dtype=int)
+
+        m_globe.drawmapboundary(linewidth=0.1)
+        m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
+        m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
+
+        p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
+    else:
+        pass
+
+
+    # Redraw the figure
+    canvas.draw()
+    LOG.info("Writing image file {}".format(pngName))
+    canvas.print_figure(pngName,dpi=dpi)
+
+    return 0
+
+
+#def set_plot_styles(data_obj, dataset_options, options, plot_nav_options):
+def set_plot_styles(dfile_obj, dset, dataset_options, options):
     """
     Collects the various plot formatting options and does any required tweaking
     before passing to the plotting method.
     """
+
+    #cbar_titles = {
+            #'temp':'temperature (K) @ {:4.2f} hPa'.format(pres_0),
+            #'wvap':'water vapor mixing ratio (g/kg) @ {:4.2f} hPa'.format(pres_0),
+            #'dwpt':'dewpoint temperature (K) @ {:4.2f} hPa'.format(pres_0),
+            #'relh':'relative humidity (%) @ {:4.2f} hPa'.format(pres_0),
+            #'ctp':'cloud top pressure (hPa)',
+            #'ctt':'cloud top temperature (K)'
+            #}
 
     plot_style_options = {}
     plot_style_options['stride'] = options.stride
@@ -421,23 +1239,33 @@ def set_plot_styles(goes_obj, data_obj, dataset_options, options, plot_nav_optio
     plot_style_options['scatterPlot'] = options.doScatterPlot
     plot_style_options['pointSize'] = options.pointSize
     plot_style_options['font_scale'] = options.font_scale
+    plot_style_options['proj'] = options.proj
     plot_style_options['dpi'] = options.dpi
 
-    image_date_time = goes_obj.attrs['Image_Date_Time']
-    dt_image_date = datetime.strptime(image_date_time,'%Y-%m-%dT%H:%M:%SZ')
+    filenames = dfile_obj.datasets['file_attrs'].keys()
+    filenames.sort()
+    dt_image_date = dfile_obj.datasets['file_attrs'][filenames[0]]['dt_obj']
 
     # Set the plot title
     if options.plot_title==None:
-        plot_style_options['title'] = "{} Imager, {}\n{}z".format(
-                goes_obj.attrs['Spacecraft_Name'],
+        pres_str = "" if not dataset_options['level'] else " @ {:4.2f} hPa".format(dfile_obj.pres_0)
+        plot_style_options['title'] = "{} , {} {}\n{}z".format(
+                dfile_obj.datasets['file_attrs'][filenames[0]]['Mission_Name'],
                 dataset_options['name'],
+                pres_str,
                 dt_image_date.strftime('%Y-%m-%d %H:%M')
                 )
     else:
         plot_style_options['title'] = options.plot_title
 
+    LOG.info("plot_style_options['title'] = {}".format(plot_style_options['title']))
+
     # Set the colorbar label
-    plot_style_options['units'] = dataset_options['units'] if data_obj.attrs['units']=="none" else data_obj.attrs['units']
+    if 'units' in dfile_obj.datasets['file_attrs'][filenames[0]].keys():
+        plot_style_options['units'] = dfile_obj.datasets['file_attrs'][filenames[0]]['units']
+    else:
+        plot_style_options['units'] = dataset_options['units']
+
     if options.cbar_title==None:
         quantity = '' if dataset_options['quantity']==None else dataset_options['quantity']
         units = '' if dataset_options['units']==None else '[{}]'.format(dataset_options['units'])
@@ -491,15 +1319,15 @@ def set_plot_styles(goes_obj, data_obj, dataset_options, options, plot_nav_optio
 
     # If this is a navigated plot, set which axes parallels and meridians get 
     # labeled at...
-    if plot_nav_options != {}:
-        if plot_nav_options['is_full_disk']:
-            plot_style_options['parallel_axes'] = [0,0,0,0]
-            plot_style_options['meridian_axes'] = [0,0,0,0]
-        else:
-            plot_style_options['parallel_axes'] = [1,0,0,0]
-            plot_style_options['meridian_axes'] = [0,0,0,1]
-    else:
-        pass
+    #if plot_nav_options != {}:
+        #if plot_nav_options['is_full_disk']:
+            #plot_style_options['parallel_axes'] = [0,0,0,0]
+            #plot_style_options['meridian_axes'] = [0,0,0,0]
+        #else:
+            #plot_style_options['parallel_axes'] = [1,0,0,0]
+            #plot_style_options['meridian_axes'] = [0,0,0,1]
+    #else:
+        #pass
 
     plot_style_options['plot_map'] = plot_map_discrete if dataset_options['discrete'] else plot_map_continuous
     plot_style_options['plot_image'] = plot_image_discrete if dataset_options['discrete'] else plot_image_continuous
@@ -608,16 +1436,17 @@ def plot_image_continuous(data,data_mask,png_file,
     LOG.info("Writing image file {}".format(png_file))
 
 
-def plot_map_continuous(lat,lon,data,data_mask,png_file,
-        dataset_options,plot_nav_options,plot_style_options):
+def plot_map_continuous(lat,lon,data,png_file,
+        dataset_options,plot_style_options):
+        #dataset_options,plot_nav_options,plot_style_options):
 
     # Copy the plot options to local variables
-    llcrnrx        = plot_nav_options['llcrnrx']
-    llcrnry        = plot_nav_options['llcrnry']
-    urcrnrx        = plot_nav_options['urcrnrx']
-    urcrnry        = plot_nav_options['urcrnry']
+    #llcrnrx        = plot_nav_options['llcrnrx']
+    #llcrnry        = plot_nav_options['llcrnry']
+    #urcrnrx        = plot_nav_options['urcrnrx']
+    #urcrnry        = plot_nav_options['urcrnry']
 
-    lon_0         = plot_nav_options['lon_0']
+    #lon_0         = plot_nav_options['lon_0']
 
     title         = plot_style_options['title']
     cbar_title    = plot_style_options['cbar_title']
@@ -636,6 +1465,7 @@ def plot_map_continuous(lat,lon,data,data_mask,png_file,
     pointSize     = plot_style_options['pointSize']
     font_scale    = plot_style_options['font_scale']
     log_plot      = plot_style_options['log_plot']
+    proj          = plot_style_options['proj']
     dpi           = plot_style_options['dpi']
 
 
@@ -643,11 +1473,100 @@ def plot_map_continuous(lat,lon,data,data_mask,png_file,
     Plot the input dataset in mapped to particular projection
     '''
 
+    if ma.is_masked(data):
+        if data.mask.shape == ():
+            data_mask = np.ones(data.shape,dtype='bool')
+        else:
+            data_mask = data.mask
+    else: 
+        data_mask = np.zeros(data.shape,dtype='bool')
+
     # If our data is all missing, return
     if (np.sum(data_mask) == data.size):
         LOG.warn("Entire {} dataset is missing, aborting".\
                 format(cbar_title))
         return -1
+
+    # Determine if this is a global projection, so we can avoid having the 
+    # global "outset" plot.
+    global_plot = False
+    if (proj=='moll' 
+            or proj=='hammer'
+            or proj=='robin'
+            or proj=='eck4'
+            or proj=='kav7'
+            or proj=='mbtfpq'
+            or proj=='sinu'
+            or proj=='cyl'
+            or proj=='merc'
+            or proj=='mill'
+            or proj=='gall'
+            or proj=='cea'
+            or proj=='vandg'):
+        global_plot = True
+
+    # Determine if this is a "rectangular" projection, so we can set sensible 
+    # latitude limits.
+    rect_plot = False
+    if (proj=='cyl'
+            or proj=='merc'
+            or proj=='mill'
+            or proj=='gall'
+            or proj=='cea'):
+        rect_plot = True
+
+    if (proj=='geos' or proj=='ortho' or global_plot):
+        LOG.info("Setting lat_0 and lon_0 for {} projection.".format(proj))
+        lat_0 = 0. if lat_0==None else lat_0
+        lon_0 = 0. if lon_0==None else lon_0
+        boundinglat = None
+
+    if (proj=='npstere' and bounding_lat<-30.):
+        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat) 
+         of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -30.
+
+    if (proj=='spstere' and bounding_lat>30.):
+        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat) 
+         of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 30.
+
+    if (proj=='npaeqd' and bounding_lat<-30.):
+        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+         of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -30.
+
+    if (proj=='spaeqd' and bounding_lat>30.):
+        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+         of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 30.
+
+    if (proj=='nplaea' and bounding_lat<=0.):
+        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+         of {} degrees must be in northern hemisphere, setting to +1 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 1.
+
+    if (proj=='splaea' and bounding_lat>=0.):
+        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+         of {} degrees must be in southern hemisphere, setting to -1 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -1.
+
+    # Compute the central lat and lon if they are not specified
+    if (lat_0==None) or (lon_0==None):
+        geo_shape = lat.shape
+        nrows, ncols = geo_shape[0],geo_shape[1]
+        LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
+        # Non lat/lon pair given, use the central unmasked values.
+        row_idx = int(nrows/2.)
+        col_idx = int(ncols/2.)
+        lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
+        lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
+        LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
+                format(lat_0,lon_0))
+
+    LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat),np.max(lat)))
+    LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon),np.max(lon)))
+
 
     # Construct particular data mask
     particular_mask = np.zeros(data.shape,dtype=np.bool)
@@ -660,30 +1579,74 @@ def plot_map_continuous(lat,lon,data,data_mask,png_file,
     LOG.debug("data array has aspect {}".format(data_aspect))
 
     # Create figure with default size, and create canvas to draw on
-    fig = Figure(figsize=(image_size[0],image_size[1]))
+    # General Setup
+    if global_plot:
+        figWidth,figHeight = 10.,6.
+        ax_rect = [0.05, 0.17, 0.90, 0.72  ] # [left,bottom,width,height]
+    else:
+        figWidth,figHeight = 8.,8.
+        ax_rect = [0.05, 0.15, 0.90, 0.75  ] # [left,bottom,width,height]
+
+    fig = Figure(figsize=(figWidth,figHeight))
     canvas = FigureCanvas(fig)
+
+    ax = fig.add_axes(ax_rect)
+
+    # Common plotting options...
+    plot_kw = {
+        'ax'         : ax,
+        'projection' : proj,
+        'lon_0'      : lon_0,
+        'lat_0'      : lat_0,
+        'fix_aspect' : True,
+        'resolution' : map_res
+    }
+
+    # Projection dependent plotting options
+    if global_plot:
+        if rect_plot:
+            plot_kw['llcrnrlat'] =  -80. if latMin==None else latMin
+            plot_kw['urcrnrlat'] =   80. if latMax==None else latMax
+            plot_kw['llcrnrlon'] = -180. if lonMin==None else lonMin
+            plot_kw['urcrnrlon'] =  180. if lonMax==None else lonMax
+        else:
+            pass
+    else:
+        LOG.info("scale = {}".format(scale))
+        windowWidth = scale *(0.35*12000000.)
+        windowHeight = scale *(0.50*9000000.)
+        plot_kw['width'] = windowWidth
+        plot_kw['height'] = windowHeight
+
+    if (proj=='npstere' or proj=='spstere' or
+            proj=='nplaea' or proj=='splaea' or
+            proj=='npaeqd' or proj=='spaeqd'):
+        plot_kw['boundinglat'] = bounding_lat
+
+    if ((proj=='aea' or proj=='lcc' or proj=='eqdc') and (np.abs(lat_0)<1.e-6)):
+        plot_kw['lat_1'] = 1.
+        plot_kw['lat_2'] = 1.
+
+    # Create the Basemap plotting object
+    LOG.info("Plotting for {} projection...".format(proj))
+    try:
+        m = Basemap(**plot_kw)
+    except ValueError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
+    except RuntimeError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
+
+    x,y=m(lon[::stride,::stride],lat[::stride,::stride])
 
     fig.text(0.98, 0.01, plot_style_options['version'],fontsize=font_scale*5, color='gray',ha='right',va='bottom',alpha=0.9)
 
-    # Create main axes instance, leaving room for colorbar at bottom,
-    # and also get the Bbox of the axes instance
-    ax_rect = map_axis # [left,bottom,width,height]
-    ax = fig.add_axes(ax_rect,axis_bgcolor='black')
 
     # Granule axis title
     ax_title = ppl.setp(ax,title=title)
     ppl.setp(ax_title,fontsize=font_scale*11)
     ppl.setp(ax_title,family="sans-serif")
-
-    # Setup the map
-    m = Basemap(projection='geos',lon_0=lon_0,ax=ax,fix_aspect=True,resolution=map_res,
-            llcrnrx=llcrnrx,
-            llcrnry=llcrnry,
-            urcrnrx=urcrnrx,
-            urcrnry=urcrnry
-            )
-
-    x,y=m(lon[::stride,::stride],lat[::stride,::stride])
 
     coastline_color = dataset_options['coastline_color']
     country_color = dataset_options['country_color']
@@ -1014,3 +1977,28 @@ def plot_map_discrete(lat,lon,data,data_mask,png_file,
     # Write the figure to file
     canvas.print_figure(png_file,dpi=dpi)
     LOG.info("Writing image file {}".format(png_file))
+
+
+def uwyoming():
+    sounding = SkewT.Sounding(filename="sounding.txt")
+
+    sounding_keys = ['mixr',
+                     'temp',
+                     'thtv',
+                     'SoundingDate',
+                     'hght',
+                     'StationNumber',
+                     'dwpt',
+                     'thte',
+                     'sknt',
+                     'relh',
+                     'drct',
+                     'thta',
+                     'pres']
+
+    sounding_inputs = {}
+
+    for key in sounding_keys:
+        sounding_inputs[key] = sounding[key]
+
+    return sounding_inputs
