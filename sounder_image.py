@@ -608,7 +608,7 @@ def main():
     lons = hsrtv_obj.datasets['lon']['data']
     data = hsrtv_obj.datasets[dataset]['data']
 
-    LOG.info("datasets['{}'] = {}".format(dataset,data))
+    #LOG.info("datasets['{}'] = {}".format(dataset,data))
 
     #print hsrtv_obj.datasets
     print hsrtv_obj.datasets['file_attrs'].items()
@@ -654,13 +654,11 @@ def main():
     # Set the plot styles 
     plot_style_options = set_plot_styles(hsrtv_obj,dataset,dataset_options,options)
 
-    #sys.exit(0)
-    #plot_style_options['version'] = cspp_geo_version
-
-
     # Get pointers to the desired plotting routines
-    #plot_image = plot_style_options['plot_image']
+    plot_image = plot_style_options['plot_image']
     plot_map = plot_style_options['plot_map']
+
+    #plot_style_options['version'] = cspp_geo_version
 
     plot_options = {}
     #plot_options['title'] = "{}\n\n".format(input_file)
@@ -686,9 +684,10 @@ def main():
     #plot_options['dpi'] = dpi
 
     # Create the plot
-    retval = plotMapDataContinuous(lats, lons, data, output_file, 
+    #retval = plotMapDataContinuous(lats, lons, data, output_file, 
+            #dataset_options, plot_style_options,plot_options)
+    retval = plot_map(lats, lons, data, output_file, 
             dataset_options, plot_style_options,plot_options)
-    #retval = plot_map_continuous(lats,lons,data,data_mask,output_file,**plot_options)
 
     print ""
     return retval

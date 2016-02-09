@@ -1092,6 +1092,20 @@ def plotMapDataDiscrete(lat, lon, data, pngName,
 
     ax = fig.add_axes(ax_rect)
 
+    # Define the discrete colorbar tick locations
+    fill_colours = dataset_options['fill_colours']
+    LOG.info("fill_colours = {}".format(fill_colours))
+    cmap = ListedColormap(fill_colours)
+
+    numCats = np.array(fill_colours).size
+    numBounds = numCats + 1
+
+    tickPos = np.arange(float(numBounds))/float(numCats)
+    tickPos = tickPos[0 :-1] + tickPos[1]/2.
+
+    LOG.debug('plotLims = {},{}'.format(plotLims[0],plotLims[1]))
+    vmin,vmax = plotLims[0],plotLims[-1]
+
     # Common plotting options...
     plot_kw = {
         'ax'         : ax,
@@ -1157,10 +1171,10 @@ def plotMapDataDiscrete(lat, lon, data, pngName,
 
     if doScatterPlot:
         cs = m.scatter(x,y,s=pointSize,c=data,axes=ax,edgecolors='none',
-                vmin=plotMin,vmax=plotMax)
+                vmin=plotMin,vmax=plotMax,cmap=cmap)
     else:
         cs = m.pcolor(x,y,data,axes=ax,edgecolors='none',antialiased=False,
-                vmin=plotMin,vmax=plotMax)
+                vmin=plotMin,vmax=plotMax,cmap=cmap)
 
     txt = ax.set_title(title,fontsize=11,y=1.04)
 
@@ -1169,11 +1183,25 @@ def plotMapDataDiscrete(lat, lon, data, pngName,
     ppl.setp(ax.get_xticklabels(), visible=False)
     ppl.setp(ax.get_yticklabels(), visible=False)
 
+    # add a colorbar axis
     cax_rect = [0.05 , 0.05, 0.90 , 0.05 ] # [left,bottom,width,height]
     cax = fig.add_axes(cax_rect,frameon=False) # setup colorbar axes
-    cb = fig.colorbar(cs, cax=cax, orientation='horizontal')
 
-    txt = cax.set_title(cbar_title)
+    # Plot the colorbar.
+    cb = fig.colorbar(cs, cax=cax, orientation='horizontal')
+    ppl.setp(cax.get_xticklabels(),fontsize=font_scale*9)
+    ppl.setp(cax.get_xticklines(),visible=False)
+
+    # Set the colourbar tick locations and ticklabels
+    #ppl.setp(cb.ax,xticks=CMD.ViirsCMTickPos) # In colorbar axis coords (0..1)
+    tickpos_data_coords = vmax*tickPos
+    cb.set_ticks(tickpos_data_coords) # In data coords (0..3)
+    tick_names = dataset_options['tick_names']
+    ppl.setp(cb.ax,xticklabels=tick_names)
+
+    # Colourbar title
+    cax_title = ppl.setp(cax,title=cbar_title)
+    ppl.setp(cax_title,fontsize=font_scale*10)
 
     #
     # Add a small globe with the swath indicated on it #
@@ -1329,7 +1357,7 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
     #else:
         #pass
 
-    plot_style_options['plot_map'] = plot_map_discrete if dataset_options['discrete'] else plot_map_continuous
+    plot_style_options['plot_map'] = plotMapDataDiscrete if dataset_options['discrete'] else plotMapDataContinuous
     plot_style_options['plot_image'] = plot_image_discrete if dataset_options['discrete'] else plot_image_continuous
 
     return plot_style_options

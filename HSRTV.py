@@ -344,7 +344,18 @@ class HSRTV():
         Custom method to returns the temperature.
         '''
         LOG.info("Computing {}".format(data_name))
-        dset = self.datasets['temp']['data']
+        dset_mask = self.datasets['temp']['data'].mask
+
+        dset = self.datasets['temp']['data'] - 273.16
+
+        low_idx = np.where(dset < -65.)
+        mid_idx = np.where((dset > -65.) * (dset < -60.))
+        hi_idx = np.where(dset > -60.)
+        dset[low_idx] = 0.
+        dset[mid_idx] = 1.
+        dset[hi_idx] = 2.
+
+        dset = ma.array(dset,mask=dset_mask)
 
         self.datasets[data_name]['attrs'] =  self.datasets['temp']['attrs']
 
