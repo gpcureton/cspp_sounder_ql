@@ -119,6 +119,7 @@ def _argparse():
     dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
     prodChoices=['temp','wvap','dwpt','relh','ctp','ctt','2temp','cold_air_aloft']
     map_res_choice = ['c','l','i']
+    plot_type_choice = ['image','slice']
     map_proj_choice = {
                        'cea':     'Cylindrical Equal Area',
                        'lcc':     'Lambert Conformal',
@@ -196,6 +197,7 @@ def _argparse():
                 'outputFilePrefix' : None,
                 'plotMax'  : None,
                 'plotMin'  : None,
+                'plot_type'  : 'image',
                 'pointSize':1,
                 'pressure':850.,
                 'proj':'lcc',
@@ -444,6 +446,16 @@ def _argparse():
                       [default: '{}']""".format(defaults["cmap"])
                       )
 
+    parser.add_argument('--plot_type',
+                      action="store",
+                      dest="plot_type",
+                      default=defaults["plot_type"],
+                      type=str,
+                      choices=plot_type_choice,
+                      help='''The type of plot. Possible values are {}.'''.format(
+                          plot_type_choice.__str__()[1:-1])
+                      )
+
     parser.add_argument('--plot_title',
                       action="store",
                       dest="plot_title",
@@ -576,6 +588,7 @@ def main():
     bounding_lat = options.bounding_lat
     plotMin = options.plotMin
     plotMax = options.plotMax
+    plot_type = options.plot_type
     scale = options.scale
     doScatterPlot = options.doScatterPlot
     pointSize = options.pointSize
@@ -601,19 +614,23 @@ def main():
 
     dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
 
-    LOG.info("pressure = {}".format(pressure))
-    hsrtv_obj = HSRTV.HSRTV(input_file_list,dataset,'level',pres_0=pressure)
+    LOG.info("Input pressure = {}".format(pressure))
+    
+    hsrtv_obj = HSRTV.HSRTV(input_file_list,dataset,plot_type,pres_0=pressure)
+
     pres_0 = hsrtv_obj.pres_0
     lats = hsrtv_obj.datasets['lat']['data']
     lons = hsrtv_obj.datasets['lon']['data']
     data = hsrtv_obj.datasets[dataset]['data']
 
-    #LOG.info("datasets['{}'] = {}".format(dataset,data))
+    if plot_type == 'slice':
+        lat_col = hsrtv_obj.datasets['lat_col']['data']
+        lon_col = hsrtv_obj.datasets['lon_col']['data']
 
-    #print hsrtv_obj.datasets
     print hsrtv_obj.datasets['file_attrs'].items()
     #print hsrtv_obj.datasets.keys()
     #print hsrtv_obj.datasets['temp']['attrs']
+
 
     input_file = path.basename(input_file_list[0])
 
@@ -657,6 +674,7 @@ def main():
     # Get pointers to the desired plotting routines
     plot_image = plot_style_options['plot_image']
     plot_map = plot_style_options['plot_map']
+    plot_slice = plot_style_options['plot_slice']
 
     #plot_style_options['version'] = cspp_geo_version
 
@@ -684,10 +702,12 @@ def main():
     #plot_options['dpi'] = dpi
 
     # Create the plot
-    #retval = plotMapDataContinuous(lats, lons, data, output_file, 
-            #dataset_options, plot_style_options,plot_options)
-    retval = plot_map(lats, lons, data, output_file, 
-            dataset_options, plot_style_options,plot_options)
+    if plot_type == 'image':
+        retval = plot_map(lats, lons, data, output_file, 
+                dataset_options, plot_style_options,plot_options)
+    if plot_type == 'slice':
+        retval = plot_slice(lat_col, lon_col, data, output_file, 
+                dataset_options, plot_style_options,plot_options)
 
     print ""
     return retval

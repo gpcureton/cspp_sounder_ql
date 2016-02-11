@@ -44,7 +44,7 @@ import copy
 # every module should have a LOG object
 LOG = logging.getLogger(__file__)
 
-from ql_common import get_pressure_index, get_geo_indices
+from ql_common import get_pressure_index,get_geo_indices,get_pressure_level
 from ql_common import Datafile_HDF5
 
 # Files dataset names for each dataset type
@@ -184,61 +184,92 @@ class HSRTV():
         dset_method['2temp'] = self.temp_times_two
         dset_method['cold_air_aloft'] = self.cold_air_aloft
 
-        # Search for the pressure level closest to the input value
-        if plot_type == 'level':
-            dfile_obj = Datafile_HDF5(file_list[0])
-            data_obj = dfile_obj.Dataset(dfile_obj,dset_name['pres'])
-            pressure = data_obj.dset[:]
-            dfile_obj.close()
+        # Read in the pressure dataset
+        LOG.info(">>> Reading in the pressure dataset...")
+        dfile_obj = Datafile_HDF5(file_list[0])
+        data_obj = dfile_obj.Dataset(dfile_obj,dset_name['pres'])
+        self.pressure = data_obj.dset[:]
+        dfile_obj.close()
 
-            pressure_scope = 10.
-            LOG.debug("Scope of pressure level search is {} hPa"
-                    .format(pressure_scope))
-            level = get_pressure_index(pressure,pres_0=pres_0,
-                    kd_dist=pressure_scope)
-            attempts = 1
-            while (level==None and attempts<10):
-                pressure_scope *= 1.1
-                LOG.debug("Scope of pressure level search is {} hPa"
-                        .format(pressure_scope))
-                level = get_pressure_index(pressure,pres_0=pres_0,
-                        kd_dist=pressure_scope)
-                attempts += 1
+        LOG.debug("pressure = {}".format(self.pressure))
 
-            if level==None:
-                raise Exception("No suitable pressure level found, aborting...")
-                 
-            LOG.debug("Retrieved level = {}".format(level))
-            self.level = level
+        if plot_type == 'image':
 
-            self.pres_0 = pressure[level]
-            LOG.debug("Retrieved pressure = {}".format(self.pres_0))
+            LOG.info("Preparing a 'level' plot...")
+            # Determine the level closest to the required pressure
+            self.level,self.pres_0 = get_pressure_level(self.pressure,pres_0)
 
-        # Read in the desired datasets
-        self.construct_pass(file_list,level)
+            # Contruct a pass of the required datasets at the desired pressure.
+            self.construct_level_pass(file_list,self.level,None,None)
+
+            LOG.debug("\n\n>>> Intermediate dataset manifest...\n")
+            LOG.debug(self.print_dataset_manifest(self))
+
+        elif plot_type == 'slice':
+
+            LOG.info("Preparing a 'slice' plot...")
+            self.level,self.pres_0 = None,0
+
+            total_dsets_to_read = list(self.dsets_to_read)
+            self.dsets_to_read = ['lat','lon']
+
+            # Getting the full latitude and longitude
+            print ""
+            LOG.info(">>> Reading in the lat and lon arrays...")
+            self.construct_level_pass(file_list,None,None,None)
+
+            LOG.debug("\n\n>>> Intermediate dataset manifest...\n")
+            LOG.debug(self.print_dataset_manifest(self))
+
+            LOG.info("Computing the row/col and lon_0/lat_0 from the lon/lat pass...")
+            self.row,self.col,self.lat_0,self.lon_0 \
+                    = get_geo_indices(self.datasets['lat']['data'],
+                                      self.datasets['lon']['data'],
+                                      lat_0=None,lon_0=None)
+            
+
+            for dsets in ['lat_row','lat_col','lon_row','lon_col']:
+                self.datasets[dsets] = {}
+
+            self.datasets['lat_row']['data'] = self.datasets['lat']['data'][self.row,:]
+            self.datasets['lat_col']['data'] = self.datasets['lat']['data'][:,self.col]
+            self.datasets['lat_row']['attrs'] =  dict(self.datasets['lat']['attrs'])
+            self.datasets['lat_col']['attrs'] =  dict(self.datasets['lat']['attrs'])
+
+            self.datasets['lon_row']['data'] = self.datasets['lon']['data'][self.row,:]
+            self.datasets['lon_col']['data'] = self.datasets['lon']['data'][:,self.col]
+            self.datasets['lon_row']['attrs'] =  dict(self.datasets['lon']['attrs'])
+            self.datasets['lon_col']['attrs'] =  dict(self.datasets['lon']['attrs'])
+
+            self.dsets_to_read = list(total_dsets_to_read)
+            self.dsets_to_read.remove('lat')
+            self.dsets_to_read.remove('lon')
+
+            print ""
+            LOG.info(">>> Reading in the remaining dataset slices..")
+            LOG.debug("(level,row,col)  = ({}, {}, {})".format(None,self.row,self.col))
+            # This is to slice along the rows
+            self.construct_slice_pass(file_list,None,None,self.col)
+            # This is to slice along the cols
+            #self.construct_slice_pass(file_list,None,self.row,None)
+
+            self.dsets_to_read = list(total_dsets_to_read)
 
 
-    def get_dset_deps(self,dset):
-        '''
-        For a particular dataset, returns the prerequisite datasets. Works 
-        recursively to find multiple levels of dependencies. 
-        Note: Currently there is nothing in place to detect circular dependencies,
-        so be careful of how you construct the dependencies.
-        '''
-        deps = dset_deps[dset]
-        for dset in deps:
-            deps = deps + self.get_dset_deps(dset)
-        return deps
+        LOG.debug("\n\n>>> Final dataset manifest...\n")
+        LOG.debug(self.print_dataset_manifest(self))
 
 
-    def construct_pass(self,file_list,level):
+    def construct_slice_pass(self,file_list,level,row,col):
         '''
         Read in each of the desired datasets. Each of the desired datasets may
         be either a "base" dataset, which is read directly from the file, or a 
         "derived" dataset, which is constructed from previously read datasets.
         '''
 
-        LOG.debug("Input file list: {}".format(file_list))
+        LOG.info("\tContructing a SLICE pass...")
+        LOG.debug("\tInput file list: {}".format(file_list))
+        LOG.debug("\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
 
         first_granule = True
         self.datasets['file_attrs'] = {}
@@ -252,7 +283,7 @@ class HSRTV():
 
             try:
 
-                LOG.info("Opening file {}".format(file_name))
+                LOG.info("\tOpening file {}".format(file_name))
                 dfile_obj = Datafile_HDF5(file_name)
                 self.datasets['file_attrs'][os.path.basename(file_name)] \
                         = dfile_obj.attrs
@@ -261,68 +292,146 @@ class HSRTV():
 
                 # Loop through each of the desired datasets
                 for dset in self.dsets_to_read:
-                    LOG.info("For dataset {}".format(dset))
+                    LOG.info("\tFor dataset {}".format(dset))
+
+                    # Choose the correct "get" method for the dataset
                     if dset_method[dset] == []:
-                        LOG.info("Using read method for {}".format(dset))
+                        LOG.info("\tUsing read method for {}".format(dset))
                         get_data = self.get_data
                     else:
-                        LOG.info("Using compute method for {}".format(dset))
+                        LOG.info("\tUsing compute method for {}".format(dset))
                         get_data = dset_method[dset]
 
-                    LOG.info("Reading in granule {} of {}".format(grans,dset))
+                    LOG.info("\tReading in granule {} of {}".format(grans,dset))
 
                     try :
 
+                        # This is to slice along the rows
                         self.datasets[dset]['data'] = np.vstack((
                             self.datasets[dset]['data'],
-                            get_data(dfile_obj,dset,level)))
-                        LOG.debug("subsequent arrays...")
+                            get_data(dfile_obj,level,row,col)
+                            ))
+                        LOG.debug("\tsubsequent arrays...")
 
                     except KeyError :
 
-                        self.datasets[dset]['data'] = get_data(dfile_obj,dset,level)
-                        LOG.debug("first arrays...")
+                        # This is to slice along the rows
+                        self.datasets[dset]['data'] = get_data(dfile_obj,dset,level,row,col)
+                        LOG.debug("\tfirst arrays...")
 
-                    LOG.debug("Intermediate {} shape = {}".format(
+                    LOG.debug("\tIntermediate {} shape = {}".format(
                         dset,self.datasets[dset]['data'].shape))
 
                 dfile_obj.close()
 
             except Exception, err :
-                LOG.warn("There was a problem, closing {}".format(file_name))
-                LOG.warn("{}".format(err))
+                LOG.warn("\tThere was a problem, closing {}".format(file_name))
+                LOG.warn("\t{}".format(err))
                 LOG.debug(traceback.format_exc())
                 dfile_obj.close()
-                LOG.info("Exiting...")
+                LOG.info("\tExiting...")
                 sys.exit(1)
 
 
-    def get_granule_dt(self,file_name):
+    def construct_level_pass(self,file_list,level,row,col):
         '''
-        Computes a datetime object based on the filename.
-        This assumes a filename for HSRTV output like...
-            "IASI_d20150331_t153700_M01.atm_prof_rtv.h5"
+        Read in each of the desired datasets. Each of the desired datasets may
+        be either a "base" dataset, which is read directly from the file, or a 
+        "derived" dataset, which is constructed from previously read datasets.
         '''
-        file_name = os.path.basename(file_name)
-        image_date_time = "_".join(file_name.split("_")[1:3])
-        dt_image_date = datetime.strptime(image_date_time,'d%Y%m%d_t%H%M%S')
-        return dt_image_date
+
+        LOG.info("\tContructing a LEVEL pass...")
+        LOG.debug("\tInput file list: {}".format(file_list))
+        LOG.debug("\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
+
+        first_granule = True
+        self.datasets['file_attrs'] = {}
+        for dset in self.dsets_to_read:
+            self.datasets[dset] = {}
+
+        # Loop through each of the granules...
+        for grans in np.arange(len(file_list)):
+
+            file_name = file_list[grans]
+
+            try:
+
+                LOG.info("\tOpening file {}".format(file_name))
+                dfile_obj = Datafile_HDF5(file_name)
+                self.datasets['file_attrs'][os.path.basename(file_name)] \
+                        = dfile_obj.attrs
+                self.datasets['file_attrs'][os.path.basename(file_name)]['dt_obj'] \
+                        = self.get_granule_dt(file_name)
+
+                # Loop through each of the desired datasets
+                for dset in self.dsets_to_read:
+                    LOG.info("\tFor dataset {}".format(dset))
+
+                    # Choose the correct "get" method for the dataset
+                    if dset_method[dset] == []:
+                        LOG.info("\tUsing read method for {}".format(dset))
+                        get_data = self.get_data
+                    else:
+                        LOG.info("\tUsing compute method for {}".format(dset))
+                        get_data = dset_method[dset]
+
+                    LOG.info("\tReading in granule {} of {}".format(grans,dset))
+
+                    try :
+
+                        self.datasets[dset]['data'] = np.vstack((
+                            self.datasets[dset]['data'],
+                            get_data(dfile_obj,dset,level,row,col)))
+                        LOG.debug("\tsubsequent arrays...")
+
+                    except KeyError :
+
+                        self.datasets[dset]['data'] = get_data(dfile_obj,dset,level,row,col)
+                        LOG.debug("\tfirst arrays...")
+
+                    LOG.debug("\tIntermediate {} shape = {}".format(
+                        dset,self.datasets[dset]['data'].shape))
+
+                dfile_obj.close()
+
+            except Exception, err :
+                LOG.warn("\tThere was a problem, closing {}".format(file_name))
+                LOG.warn("\t{}".format(err))
+                LOG.debug(traceback.format_exc())
+                dfile_obj.close()
+                LOG.info("\tExiting...")
+                sys.exit(1)
 
 
-    def get_data(self,dfile_obj,data_name,level):
+    def get_data(self,dfile_obj,data_name,level,row,col):
         '''
         This method reads a single granule of the required dataset, and returns
         a single array (which may be a surface/top, pressure level, or slice dataset.
         '''
 
+        LOG.debug("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
+
+        level = slice(level) if level == None else level
+        row = slice(row) if row == None else row
+        col = slice(col) if col == None else col
+
         data_obj = dfile_obj.Dataset(dfile_obj,dset_name[data_name])
 
         if dset_type[data_name] == 'single':
-            dset = data_obj.dset[:,:]
+            LOG.debug("\tgetting a 'single' dataset...")
+            dset = data_obj.dset[row,col].squeeze()
         elif dset_type[data_name] == 'level': 
-            dset = data_obj.dset[level,:,:]
+            LOG.debug("\tgetting a 'level' dataset...")
+            dset = data_obj.dset[level,row,col].squeeze()
 
-        self.datasets[data_name]['attrs'] =  data_obj.attrs
+
+        LOG.debug("\t\tDataset {} has shape {}".format(data_name,dset.shape))
+
+        self.datasets[data_name]['attrs'] =  dict(data_obj.attrs)
+
+        LOG.info("For dataset {}:".format(data_name))
+        LOG.info("\t\tdatasets['{}']['attrs'] = {}".format(
+                data_name,self.datasets[data_name]['attrs']))
 
         return dset
 
@@ -331,7 +440,7 @@ class HSRTV():
         '''
         Custom method to compute two times the temperature.
         '''
-        LOG.info("Computing {}".format(data_name))
+        LOG.info("\t\tComputing {}".format(data_name))
         dset = 2. * self.datasets['temp']['data'] + 0.01*self.pres_0
 
         self.datasets[data_name]['attrs'] =  self.datasets['temp']['attrs']
@@ -343,7 +452,7 @@ class HSRTV():
         '''
         Custom method to returns the temperature.
         '''
-        LOG.info("Computing {}".format(data_name))
+        LOG.info("\t\tComputing {}".format(data_name))
         dset_mask = self.datasets['temp']['data'].mask
 
         dset = self.datasets['temp']['data'] - 273.16
@@ -357,10 +466,23 @@ class HSRTV():
 
         dset = ma.array(dset,mask=dset_mask)
 
-        self.datasets[data_name]['attrs'] =  self.datasets['temp']['attrs']
+        self.datasets[data_name]['attrs'] = self.datasets['temp']['attrs']
 
         return dset
 
+
+    def print_dataset_manifest(self,pkg_obj):
+        dataset_names = list(pkg_obj.datasets.keys())
+        dataset_names.remove('file_attrs')
+        LOG.info("datasets: {}".format(dataset_names))
+
+        for key in dataset_names:
+            LOG.info("For dataset {}:".format(key))
+            LOG.info("\tdatasets['{}']['attrs'] = {}".format(
+                    key,pkg_obj.datasets[key]['attrs']))
+            LOG.info("\tdatasets['{}']['data'].shape = {}".format(
+                    key,pkg_obj.datasets[key]['data'].shape))
+        print ""
 
     def get_data_old(self,data_file,data_name,level):
 
@@ -420,3 +542,29 @@ class HSRTV():
 
 
         return sounding_inputs
+    def get_dset_deps(self,dset):
+        '''
+        For a particular dataset, returns the prerequisite datasets. Works 
+        recursively to find multiple levels of dependencies. 
+        Note: Currently there is nothing in place to detect circular dependencies,
+        so be careful of how you construct the dependencies.
+        '''
+        deps = dset_deps[dset]
+        for dset in deps:
+            deps = deps + self.get_dset_deps(dset)
+        return deps
+
+
+    def get_granule_dt(self,file_name):
+        '''
+        Computes a datetime object based on the filename.
+        This assumes a filename for HSRTV output like...
+            "IASI_d20150331_t153700_M01.atm_prof_rtv.h5"
+        '''
+        file_name = os.path.basename(file_name)
+        image_date_time = "_".join(file_name.split("_")[1:3])
+        image_date_time = image_date_time.split(".")[0]
+        dt_image_date = datetime.strptime(image_date_time,'d%Y%m%d_t%H%M%S')
+        return dt_image_date
+
+

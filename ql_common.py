@@ -231,7 +231,7 @@ def granuleFiles(prodGlob):
     return prodList
 
 
-def get_pressure_index(pressure,pres_0=850.,kd_dist=10.):
+def get_pressure_index(pressure,pres_0,kd_dist=10.):
     '''
     Get the indices in the pressure level array closes to the desired
     pressure. If no pressure is specified, use the closest to 850mb. 
@@ -283,6 +283,32 @@ def get_pressure_index(pressure,pres_0=850.,kd_dist=10.):
         LOG.debug(traceback.format_exc())
 
     return level
+
+
+def get_pressure_level(pressure,pres_0):
+    '''
+    Calculate the closest pressure level to the desired pressure. 
+    '''
+    pressure_scope = 10.
+    LOG.debug("Scope of pressure level search is {} hPa".format(pressure_scope))
+
+    level = get_pressure_index(pressure, pres_0, kd_dist=pressure_scope)
+
+    attempts = 1
+    while (level==None and attempts<10):
+        pressure_scope *= 1.1
+        LOG.debug("Scope of pressure level search is {} hPa".format(pressure_scope))
+        level = get_pressure_index(pressure, pres_0, kd_dist=pressure_scope)
+        attempts += 1
+
+    if level==None:
+        raise Exception("No suitable pressure level found, aborting...")
+         
+    LOG.debug("Retrieved level = {}".format(level))
+
+    LOG.debug("Retrieved pressure = {}".format(pressure[level]))
+
+    return level,pressure[level]
 
 
 def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
@@ -346,14 +372,18 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
         LOG.debug("Row index is {}".format(row))
         LOG.debug("Col index is {}".format(col))
         
-        LOG.debug("Retrieved latitude is {:4.2f}".format(lat[row,col].squeeze()))
-        LOG.debug("Retrieved longitude is {:4.2f}".format(lon[row,col].squeeze()))
+        lat_0 = lat[row,col].squeeze()
+        lon_0 = lon[row,col].squeeze()
+
+        LOG.debug("Retrieved latitude is {:4.2f}".format(lat_0))
+        LOG.debug("Retrieved longitude is {:4.2f}".format(lon_0))
 
     except Exception, err :
         LOG.warn("{}".format(err))
         LOG.debug(traceback.format_exc())
 
-    return row,col
+    return row,col,lat_0,lon_0
+
 
 def set_plot_navigation_proj(lats,lons,goes_l1_obj, options):
     """
@@ -1240,6 +1270,451 @@ def plotMapDataDiscrete(lat, lon, data, pngName,
     return 0
 
 
+def plotSliceContinuous(lat, lon, data, pngName,
+        dataset_options, plot_style_options, plot_options):
+        
+    # Copy the plot options to local variables
+    #title         = plot_options['title']
+    #cbar_title    = plot_options['cbar_title']
+    #units         = plot_options['units']
+    #stride        = plot_options['stride']
+    lat_0         = plot_options['lat_0']
+    lon_0         = plot_options['lon_0']
+    #pres_0        = plot_options['pres_0']
+    latMin        = plot_options['latMin']
+    lonMin        = plot_options['lonMin']
+    latMax        = plot_options['latMax']
+    lonMax        = plot_options['lonMax']
+    #plotMin       = plot_options['plotMin']
+    #plotMax       = plot_options['plotMax']
+    bounding_lat  = plot_options['bounding_lat']
+    scale         = plot_options['scale']
+    #map_res       = plot_options['map_res']
+    proj          = plot_options['proj']
+    #cmap          = plot_options['cmap']
+    #doScatterPlot = plot_options['scatterPlot']
+    #pointSize     = plot_options['pointSize']
+    #dpi           = plot_options['dpi']
+
+    # Copy the plot options to local variables
+    #llcrnrx        = plot_nav_options['llcrnrx']
+    #llcrnry        = plot_nav_options['llcrnry']
+    #urcrnrx        = plot_nav_options['urcrnrx']
+    #urcrnry        = plot_nav_options['urcrnry']
+
+    #lon_0         = plot_nav_options['lon_0']
+
+    title         = plot_style_options['title']
+    cbar_title    = plot_style_options['cbar_title']
+    stride        = plot_style_options['stride']
+    plotMin       = plot_style_options['plotMin']
+    plotMax       = plot_style_options['plotMax']
+    plotLims      = plot_style_options['plotLims']
+
+    map_axis      = plot_style_options['map_axis']
+    cbar_axis     = plot_style_options['cbar_axis']
+    image_size    = plot_style_options['image_size']
+
+    map_res       = plot_style_options['map_res']
+    cmap          = plot_style_options['cmap']
+    doScatterPlot = plot_style_options['scatterPlot']
+    pointSize     = plot_style_options['pointSize']
+    font_scale    = plot_style_options['font_scale']
+    log_plot      = plot_style_options['log_plot']
+    dpi           = plot_style_options['dpi']
+
+    '''
+    Plot the input dataset in mapped to particular projection
+    '''
+
+    LOG.info("lat.shape = {}".format(lat.shape))
+    LOG.info("lon.shape = {}".format(lon.shape))
+    LOG.info("data.shape = {}".format(data.shape))
+
+    # If our data is all missing, return
+    data_mask = data.mask
+    if (np.sum(data_mask) == data.size):
+        LOG.warn("Entire {} dataset is missing, aborting".\
+                format(cbar_title))
+        return -1
+
+    # General Setup
+    figWidth,figHeight = 10.,6.
+    ax_rect = [0.05, 0.17, 0.90, 0.72  ] # [left,bottom,width,height]
+
+    fig = Figure(figsize=(figWidth,figHeight))
+    canvas = FigureCanvas(fig)
+
+    ax = fig.add_axes(ax_rect)
+
+    # Common plotting options...
+    plot_kw = {
+        'ax'         : ax,
+        'fix_aspect' : True
+    }
+
+
+    #data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
+
+    plotMin = np.min(data) if plotMin==None else plotMin
+    plotMax = np.max(data) if plotMax==None else plotMax
+    LOG.debug("plotMin = {}".format(plotMin))
+    LOG.debug("plotMax = {}".format(plotMax))
+
+
+    im = ax.imshow(data,axes=ax,interpolation='nearest',vmin=plotMin,vmax=plotMax)
+
+    txt = ax.set_title(title,fontsize=11,y=1.04)
+
+    #ppl.setp(ax.get_xticklines(),visible=False)
+    #ppl.setp(ax.get_yticklines(),visible=False)
+    #ppl.setp(ax.get_xticklabels(), visible=False)
+    #ppl.setp(ax.get_yticklabels(), visible=False)
+
+    cax_rect = [0.05 , 0.05, 0.90 , 0.05 ] # [left,bottom,width,height]
+    cax = fig.add_axes(cax_rect,frameon=False) # setup colorbar axes
+    cb = fig.colorbar(im, cax=cax, orientation='horizontal')
+
+    txt = cax.set_title(cbar_title)
+
+    #
+    # Add a small globe with the swath indicated on it #
+    #
+    # Create main axes instance, leaving room for colorbar at bottom,
+    # and also get the Bbox of the axes instance
+    glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
+    glax = fig.add_axes(glax_rect)
+
+    m_globe = Basemap(lat_0=0.,lon_0=0.,\
+        ax=glax,resolution='c',area_thresh=10000.,projection='robin')
+
+    # If we previously had a zero size data array, increase the pointSize
+    # so the data points are visible on the global plot
+    if (np.shape(lon[::stride])[0]==2) :
+        pointSize = 5.
+
+    x,y=m_globe(lon[::stride],lat[::stride])
+    swath = np.zeros(np.shape(x),dtype=int)
+
+    m_globe.drawmapboundary(linewidth=0.1)
+    m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
+    m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
+
+    p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
+
+    # Redraw the figure
+    canvas.draw()
+    LOG.info("Writing image file {}".format(pngName))
+    canvas.print_figure(pngName,dpi=dpi)
+
+    return 0
+
+
+def plotSliceDiscrete(lat, lon, data, pngName,
+        dataset_options, plot_style_options, plot_options):
+        
+    # Copy the plot options to local variables
+    #title         = plot_options['title']
+    #cbar_title    = plot_options['cbar_title']
+    #units         = plot_options['units']
+    #stride        = plot_options['stride']
+    lat_0         = plot_options['lat_0']
+    lon_0         = plot_options['lon_0']
+    #pres_0        = plot_options['pres_0']
+    latMin        = plot_options['latMin']
+    lonMin        = plot_options['lonMin']
+    latMax        = plot_options['latMax']
+    lonMax        = plot_options['lonMax']
+    #plotMin       = plot_options['plotMin']
+    #plotMax       = plot_options['plotMax']
+    bounding_lat  = plot_options['bounding_lat']
+    scale         = plot_options['scale']
+    #map_res       = plot_options['map_res']
+    proj          = plot_options['proj']
+    #cmap          = plot_options['cmap']
+    #doScatterPlot = plot_options['scatterPlot']
+    #pointSize     = plot_options['pointSize']
+    #dpi           = plot_options['dpi']
+
+    # Copy the plot options to local variables
+    #llcrnrx        = plot_nav_options['llcrnrx']
+    #llcrnry        = plot_nav_options['llcrnry']
+    #urcrnrx        = plot_nav_options['urcrnrx']
+    #urcrnry        = plot_nav_options['urcrnry']
+
+    #lon_0         = plot_nav_options['lon_0']
+
+    title         = plot_style_options['title']
+    cbar_title    = plot_style_options['cbar_title']
+    stride        = plot_style_options['stride']
+    plotMin       = plot_style_options['plotMin']
+    plotMax       = plot_style_options['plotMax']
+    plotLims      = plot_style_options['plotLims']
+
+    map_axis      = plot_style_options['map_axis']
+    cbar_axis     = plot_style_options['cbar_axis']
+    image_size    = plot_style_options['image_size']
+
+    map_res       = plot_style_options['map_res']
+    cmap          = plot_style_options['cmap']
+    doScatterPlot = plot_style_options['scatterPlot']
+    pointSize     = plot_style_options['pointSize']
+    font_scale    = plot_style_options['font_scale']
+    log_plot      = plot_style_options['log_plot']
+    dpi           = plot_style_options['dpi']
+
+    '''
+    Plot the input dataset in mapped to particular projection
+    '''
+
+    # If our data is all missing, return
+    data_mask = data.mask
+    if (np.sum(data_mask) == data.size):
+        LOG.warn("Entire {} dataset is missing, aborting".\
+                format(cbar_title))
+        return -1
+
+    # Determine if this is a global projection, so we can avoid having the 
+    # global "outset" plot.
+    global_plot = False
+    if (proj=='moll' 
+            or proj=='hammer'
+            or proj=='robin'
+            or proj=='eck4'
+            or proj=='kav7'
+            or proj=='mbtfpq'
+            or proj=='sinu'
+            or proj=='cyl'
+            or proj=='merc'
+            or proj=='mill'
+            or proj=='gall'
+            or proj=='cea'
+            or proj=='vandg'):
+        global_plot = True
+
+    # Determine if this is a "rectangular" projection, so we can set sensible 
+    # latitude limits.
+    rect_plot = False
+    if (proj=='cyl'
+            or proj=='merc'
+            or proj=='mill'
+            or proj=='gall'
+            or proj=='cea'):
+        rect_plot = True
+
+    if (proj=='geos' or proj=='ortho' or global_plot):
+        LOG.info("Setting lat_0 and lon_0 for {} projection.".format(proj))
+        lat_0 = 0. if lat_0==None else lat_0
+        lon_0 = 0. if lon_0==None else lon_0
+        boundinglat = None
+
+    if (proj=='npstere' and bounding_lat<-30.):
+        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat) 
+         of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -30.
+
+    if (proj=='spstere' and bounding_lat>30.):
+        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat) 
+         of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 30.
+
+    if (proj=='npaeqd' and bounding_lat<-30.):
+        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+         of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -30.
+
+    if (proj=='spaeqd' and bounding_lat>30.):
+        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+         of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 30.
+
+    if (proj=='nplaea' and bounding_lat<=0.):
+        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+         of {} degrees must be in northern hemisphere, setting to +1 degrees latitude.""".format(bounding_lat))
+        bounding_lat = 1.
+
+    if (proj=='splaea' and bounding_lat>=0.):
+        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+         of {} degrees must be in southern hemisphere, setting to -1 degrees latitude.""".format(bounding_lat))
+        bounding_lat = -1.
+
+    # Compute the central lat and lon if they are not specified
+    if (lat_0==None) or (lon_0==None):
+        geo_shape = lat.shape
+        nrows, ncols = geo_shape[0],geo_shape[1]
+        LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
+        # Non lat/lon pair given, use the central unmasked values.
+        row_idx = int(nrows/2.)
+        col_idx = int(ncols/2.)
+        lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
+        lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
+        LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
+                format(lat_0,lon_0))
+
+    LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat),np.max(lat)))
+    LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon),np.max(lon)))
+
+    # General Setup
+    if global_plot:
+        figWidth,figHeight = 10.,6.
+        ax_rect = [0.05, 0.17, 0.90, 0.72  ] # [left,bottom,width,height]
+    else:
+        figWidth,figHeight = 8.,8.
+        ax_rect = [0.05, 0.15, 0.90, 0.75  ] # [left,bottom,width,height]
+
+    fig = Figure(figsize=(figWidth,figHeight))
+    canvas = FigureCanvas(fig)
+
+    ax = fig.add_axes(ax_rect)
+
+    # Define the discrete colorbar tick locations
+    fill_colours = dataset_options['fill_colours']
+    LOG.info("fill_colours = {}".format(fill_colours))
+    cmap = ListedColormap(fill_colours)
+
+    numCats = np.array(fill_colours).size
+    numBounds = numCats + 1
+
+    tickPos = np.arange(float(numBounds))/float(numCats)
+    tickPos = tickPos[0 :-1] + tickPos[1]/2.
+
+    LOG.debug('plotLims = {},{}'.format(plotLims[0],plotLims[1]))
+    vmin,vmax = plotLims[0],plotLims[-1]
+
+    # Common plotting options...
+    plot_kw = {
+        'ax'         : ax,
+        'projection' : proj,
+        'lon_0'      : lon_0,
+        'lat_0'      : lat_0,
+        'fix_aspect' : True,
+        'resolution' : map_res
+    }
+
+    # Projection dependent plotting options
+    if global_plot:
+        if rect_plot:
+            plot_kw['llcrnrlat'] =  -80. if latMin==None else latMin
+            plot_kw['urcrnrlat'] =   80. if latMax==None else latMax
+            plot_kw['llcrnrlon'] = -180. if lonMin==None else lonMin
+            plot_kw['urcrnrlon'] =  180. if lonMax==None else lonMax
+        else:
+            pass
+    else:
+        LOG.info("scale = {}".format(scale))
+        windowWidth = scale *(0.35*12000000.)
+        windowHeight = scale *(0.50*9000000.)
+        plot_kw['width'] = windowWidth
+        plot_kw['height'] = windowHeight
+
+    if (proj=='npstere' or proj=='spstere' or
+            proj=='nplaea' or proj=='splaea' or
+            proj=='npaeqd' or proj=='spaeqd'):
+        plot_kw['boundinglat'] = bounding_lat
+
+    if ((proj=='aea' or proj=='lcc' or proj=='eqdc') and (np.abs(lat_0)<1.e-6)):
+        plot_kw['lat_1'] = 1.
+        plot_kw['lat_2'] = 1.
+
+    # Create the Basemap plotting object
+    LOG.info("Plotting for {} projection...".format(proj))
+    try:
+        m = Basemap(**plot_kw)
+    except ValueError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
+    except RuntimeError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
+
+    x,y=m(lon[::stride,::stride],lat[::stride,::stride])
+
+    m.drawcoastlines(linewidth = 0.5)
+    m.drawcountries(linewidth = 0.5)
+    m.fillcontinents(color='0.85',zorder=0)
+    m.drawparallels(np.arange( -90, 91,30), color = '0.25', 
+            linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
+    m.drawmeridians(np.arange(-180,180,30), color = '0.25', 
+            linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
+
+    data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
+
+    plotMin = np.min(data) if plotMin==None else plotMin
+    plotMax = np.max(data) if plotMax==None else plotMax
+    LOG.debug("plotMin = {}".format(plotMin))
+    LOG.debug("plotMax = {}".format(plotMax))
+
+    if doScatterPlot:
+        cs = m.scatter(x,y,s=pointSize,c=data,axes=ax,edgecolors='none',
+                vmin=plotMin,vmax=plotMax,cmap=cmap)
+    else:
+        cs = m.pcolor(x,y,data,axes=ax,edgecolors='none',antialiased=False,
+                vmin=plotMin,vmax=plotMax,cmap=cmap)
+
+    txt = ax.set_title(title,fontsize=11,y=1.04)
+
+    ppl.setp(ax.get_xticklines(),visible=False)
+    ppl.setp(ax.get_yticklines(),visible=False)
+    ppl.setp(ax.get_xticklabels(), visible=False)
+    ppl.setp(ax.get_yticklabels(), visible=False)
+
+    # add a colorbar axis
+    cax_rect = [0.05 , 0.05, 0.90 , 0.05 ] # [left,bottom,width,height]
+    cax = fig.add_axes(cax_rect,frameon=False) # setup colorbar axes
+
+    # Plot the colorbar.
+    cb = fig.colorbar(cs, cax=cax, orientation='horizontal')
+    ppl.setp(cax.get_xticklabels(),fontsize=font_scale*9)
+    ppl.setp(cax.get_xticklines(),visible=False)
+
+    # Set the colourbar tick locations and ticklabels
+    #ppl.setp(cb.ax,xticks=CMD.ViirsCMTickPos) # In colorbar axis coords (0..1)
+    tickpos_data_coords = vmax*tickPos
+    cb.set_ticks(tickpos_data_coords) # In data coords (0..3)
+    tick_names = dataset_options['tick_names']
+    ppl.setp(cb.ax,xticklabels=tick_names)
+
+    # Colourbar title
+    cax_title = ppl.setp(cax,title=cbar_title)
+    ppl.setp(cax_title,fontsize=font_scale*10)
+
+    #
+    # Add a small globe with the swath indicated on it #
+    #
+    if not global_plot:
+        # Create main axes instance, leaving room for colorbar at bottom,
+        # and also get the Bbox of the axes instance
+        glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
+        glax = fig.add_axes(glax_rect)
+
+        m_globe = Basemap(lat_0=0.,lon_0=0.,\
+            ax=glax,resolution='c',area_thresh=10000.,projection='robin')
+
+        # If we previously had a zero size data array, increase the pointSize
+        # so the data points are visible on the global plot
+        if (np.shape(lon[::stride,::stride])[0]==2) :
+            pointSize = 5.
+
+        x,y=m_globe(lon[::stride,::stride],lat[::stride,::stride])
+        swath = np.zeros(np.shape(x),dtype=int)
+
+        m_globe.drawmapboundary(linewidth=0.1)
+        m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
+        m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
+
+        p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
+    else:
+        pass
+
+
+    # Redraw the figure
+    canvas.draw()
+    LOG.info("Writing image file {}".format(pngName))
+    canvas.print_figure(pngName,dpi=dpi)
+
+    return 0
+
+
 #def set_plot_styles(data_obj, dataset_options, options, plot_nav_options):
 def set_plot_styles(dfile_obj, dset, dataset_options, options):
     """
@@ -1359,6 +1834,7 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
 
     plot_style_options['plot_map'] = plotMapDataDiscrete if dataset_options['discrete'] else plotMapDataContinuous
     plot_style_options['plot_image'] = plot_image_discrete if dataset_options['discrete'] else plot_image_continuous
+    plot_style_options['plot_slice'] = plotSliceDiscrete if dataset_options['discrete'] else plotSliceContinuous
 
     return plot_style_options
 
