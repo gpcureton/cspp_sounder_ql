@@ -622,15 +622,13 @@ def main():
     lats = hsrtv_obj.datasets['lat']['data']
     lons = hsrtv_obj.datasets['lon']['data']
     data = hsrtv_obj.datasets[dataset]['data']
+    data_mask = hsrtv_obj.datasets[dataset]['data_mask']
 
     if plot_type == 'slice':
         lat_col = hsrtv_obj.datasets['lat_col']['data']
         lon_col = hsrtv_obj.datasets['lon_col']['data']
 
-    print hsrtv_obj.datasets['file_attrs'].items()
-    #print hsrtv_obj.datasets.keys()
-    #print hsrtv_obj.datasets['temp']['attrs']
-
+    LOG.debug(hsrtv_obj.datasets['file_attrs'].items())
 
     input_file = path.basename(input_file_list[0])
 
@@ -703,11 +701,11 @@ def main():
 
     # Create the plot
     if plot_type == 'image':
-        retval = plot_map(lats, lons, data, output_file, 
-                dataset_options, plot_style_options,plot_options)
+        retval = plot_map(lats, lons, data, data_mask, 
+                output_file, dataset_options, plot_style_options,plot_options)
     if plot_type == 'slice':
-        retval = plot_slice(lat_col, lon_col, data, output_file, 
-                dataset_options, plot_style_options,plot_options)
+        retval = plot_slice(lat_col, lon_col, lats, lons, data, data_mask,
+                output_file, dataset_options, plot_style_options,plot_options)
 
     print ""
     return retval

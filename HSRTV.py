@@ -191,7 +191,7 @@ class HSRTV():
         self.pressure = data_obj.dset[:]
         dfile_obj.close()
 
-        LOG.debug("pressure = {}".format(self.pressure))
+        #LOG.debug("pressure = {}".format(self.pressure))
 
         if plot_type == 'image':
 
@@ -214,12 +214,12 @@ class HSRTV():
             self.dsets_to_read = ['lat','lon']
 
             # Getting the full latitude and longitude
-            print ""
             LOG.info(">>> Reading in the lat and lon arrays...")
             self.construct_level_pass(file_list,None,None,None)
 
             LOG.debug("\n\n>>> Intermediate dataset manifest...\n")
             LOG.debug(self.print_dataset_manifest(self))
+
 
             LOG.info("Computing the row/col and lon_0/lat_0 from the lon/lat pass...")
             self.row,self.col,self.lat_0,self.lon_0 \
@@ -245,7 +245,7 @@ class HSRTV():
             self.dsets_to_read.remove('lat')
             self.dsets_to_read.remove('lon')
 
-            print ""
+            #self.col = 14 # GPC: FIXME
             LOG.info(">>> Reading in the remaining dataset slices..")
             LOG.debug("(level,row,col)  = ({}, {}, {})".format(None,self.row,self.col))
             # This is to slice along the rows
@@ -276,6 +276,9 @@ class HSRTV():
         for dset in self.dsets_to_read:
             self.datasets[dset] = {}
 
+        this_granule_data = {}
+        this_granule_mask = {}
+
         # Loop through each of the granules...
         for grans in np.arange(len(file_list)):
 
@@ -292,42 +295,64 @@ class HSRTV():
 
                 # Loop through each of the desired datasets
                 for dset in self.dsets_to_read:
-                    LOG.info("\tFor dataset {}".format(dset))
+                    LOG.debug("\tFor dataset {}".format(dset))
 
                     # Choose the correct "get" method for the dataset
                     if dset_method[dset] == []:
-                        LOG.info("\tUsing read method for {}".format(dset))
+                        LOG.debug("\tUsing read method for {}".format(dset))
                         get_data = self.get_data
                     else:
-                        LOG.info("\tUsing compute method for {}".format(dset))
+                        LOG.debug("\tUsing compute method for {}".format(dset))
                         get_data = dset_method[dset]
 
-                    LOG.info("\tReading in granule {} of {}".format(grans,dset))
+                    LOG.debug("\tReading in granule {} of {}".format(grans,dset))
+
+                    data = get_data(dfile_obj,dset,level,row,col,
+                            this_granule_data,this_granule_mask)
+                    this_granule_data[dset] = data
+
+                    LOG.debug("\t\tgranule {} shape = {}".format(
+                        dset,this_granule_data[dset].shape))
+
+                    missing_value = float(self.datasets[dset]['attrs']['missing_value'])
+                    LOG.debug("\t\tMissing value = {}".format(missing_value))
+                    data_mask = ma.masked_equal(data,missing_value).mask
+                    LOG.debug("\t\tdata_mask.shape = {}".format(data_mask.shape))
+                    if data_mask.shape == ():
+                        data_mask = np.zeros(data.shape,dtype='bool')
+                    this_granule_mask[dset] = data_mask
 
                     try :
+                        self.datasets[dset]['data'] = \
+                                np.hstack((self.datasets[dset]['data'],this_granule_data[dset]))
+                        self.datasets[dset]['data_mask'] = \
+                                np.hstack((self.datasets[dset]['data_mask'],this_granule_mask[dset]))
 
-                        # This is to slice along the rows
-                        self.datasets[dset]['data'] = np.vstack((
-                            self.datasets[dset]['data'],
-                            get_data(dfile_obj,level,row,col)
-                            ))
-                        LOG.debug("\tsubsequent arrays...")
+                        LOG.debug("\t\tsubsequent arrays...")
 
-                    except KeyError :
+                    except KeyError,err :
 
-                        # This is to slice along the rows
-                        self.datasets[dset]['data'] = get_data(dfile_obj,dset,level,row,col)
-                        LOG.debug("\tfirst arrays...")
+                        LOG.debug("\t\tFirst arrays...")
+                        LOG.debug("\t\tCreating new data array for {}".format(dset))
+                        #LOG.info(traceback.format_exc())
+
+                        self.datasets[dset]['data'] = this_granule_data[dset]
+                        self.datasets[dset]['data_mask'] = this_granule_mask[dset]
+
 
                     LOG.debug("\tIntermediate {} shape = {}".format(
                         dset,self.datasets[dset]['data'].shape))
+                    LOG.debug("\tIntermediate {} mask shape = {}".format(
+                        dset,self.datasets[dset]['data_mask'].shape))
 
+                LOG.info("\tClosing file {}".format(file_name))
                 dfile_obj.close()
 
             except Exception, err :
                 LOG.warn("\tThere was a problem, closing {}".format(file_name))
                 LOG.warn("\t{}".format(err))
                 LOG.debug(traceback.format_exc())
+                LOG.info("\tClosing file {}".format(file_name))
                 dfile_obj.close()
                 LOG.info("\tExiting...")
                 sys.exit(1)
@@ -349,6 +374,9 @@ class HSRTV():
         for dset in self.dsets_to_read:
             self.datasets[dset] = {}
 
+        this_granule_data = {}
+        this_granule_mask = {}
+
         # Loop through each of the granules...
         for grans in np.arange(len(file_list)):
 
@@ -365,45 +393,70 @@ class HSRTV():
 
                 # Loop through each of the desired datasets
                 for dset in self.dsets_to_read:
-                    LOG.info("\tFor dataset {}".format(dset))
+                    LOG.debug("\tFor dataset {}".format(dset))
 
                     # Choose the correct "get" method for the dataset
                     if dset_method[dset] == []:
-                        LOG.info("\tUsing read method for {}".format(dset))
+                        LOG.debug("\tUsing read method for {}".format(dset))
                         get_data = self.get_data
                     else:
-                        LOG.info("\tUsing compute method for {}".format(dset))
+                        LOG.debug("\tUsing compute method for {}".format(dset))
                         get_data = dset_method[dset]
 
-                    LOG.info("\tReading in granule {} of {}".format(grans,dset))
+                    LOG.debug("\tReading in granule {} of {}".format(grans,dset))
+
+                    data = get_data(dfile_obj,dset,level,row,col,
+                            this_granule_data,this_granule_mask)
+                    this_granule_data[dset] = data
+
+                    LOG.debug("\t\tthis_granule_data['{}'].shape = {}".format(
+                        dset,this_granule_data[dset].shape))
+
+                    missing_value = float(self.datasets[dset]['attrs']['missing_value'])
+                    LOG.debug("\t\tMissing value = {}".format(missing_value))
+                    data_mask = ma.masked_equal(data,missing_value).mask
+                    LOG.debug("\t\tdata_mask.shape = {}".format(data_mask.shape))
+                    if data_mask.shape == ():
+                        data_mask = np.zeros(data.shape,dtype='bool')
+                    this_granule_mask[dset] = data_mask
 
                     try :
+                        self.datasets[dset]['data'] = \
+                                np.vstack((self.datasets[dset]['data'],this_granule_data[dset]))
+                        self.datasets[dset]['data_mask'] = \
+                                np.vstack((self.datasets[dset]['data_mask'],this_granule_mask[dset]))
 
-                        self.datasets[dset]['data'] = np.vstack((
-                            self.datasets[dset]['data'],
-                            get_data(dfile_obj,dset,level,row,col)))
-                        LOG.debug("\tsubsequent arrays...")
+                        LOG.debug("\t\tsubsequent arrays...")
 
-                    except KeyError :
+                    except KeyError,err :
 
-                        self.datasets[dset]['data'] = get_data(dfile_obj,dset,level,row,col)
-                        LOG.debug("\tfirst arrays...")
+                        LOG.debug("\t\tFirst arrays...")
+                        LOG.debug("\t\tCreating new data array for {}".format(dset))
+                        #LOG.info(traceback.format_exc())
+
+                        self.datasets[dset]['data'] = this_granule_data[dset]
+                        self.datasets[dset]['data_mask'] = this_granule_mask[dset]
+
 
                     LOG.debug("\tIntermediate {} shape = {}".format(
                         dset,self.datasets[dset]['data'].shape))
+                    LOG.debug("\tIntermediate {} mask shape = {}".format(
+                        dset,self.datasets[dset]['data_mask'].shape))
 
+                LOG.info("\tClosing file {}".format(file_name))
                 dfile_obj.close()
 
             except Exception, err :
                 LOG.warn("\tThere was a problem, closing {}".format(file_name))
                 LOG.warn("\t{}".format(err))
                 LOG.debug(traceback.format_exc())
+                LOG.info("\tClosing file {}".format(file_name))
                 dfile_obj.close()
                 LOG.info("\tExiting...")
                 sys.exit(1)
 
 
-    def get_data(self,dfile_obj,data_name,level,row,col):
+    def get_data(self,dfile_obj,data_name,level,row,col,this_granule_data,this_granule_mask):
         '''
         This method reads a single granule of the required dataset, and returns
         a single array (which may be a surface/top, pressure level, or slice dataset.
@@ -429,9 +482,47 @@ class HSRTV():
 
         self.datasets[data_name]['attrs'] =  dict(data_obj.attrs)
 
-        LOG.info("For dataset {}:".format(data_name))
-        LOG.info("\t\tdatasets['{}']['attrs'] = {}".format(
-                data_name,self.datasets[data_name]['attrs']))
+        return dset
+
+
+    def cold_air_aloft(self,dfile_obj,data_name,level,row,col,this_granule_data,this_granule_mask):
+        '''
+        Custom method to returns the temperature, binned into three categories:
+
+        temp < -65 degC             --> 0
+        -65 degC < temp < -60 degC  --> 1
+        temp > -60 degC             --> 2
+
+        The resulting product is known as the "cold-air-aloft" and is of interest
+        to aviation.
+        '''
+
+        LOG.debug("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
+
+        level = slice(level) if level == None else level
+        row = slice(row) if row == None else row
+        col = slice(col) if col == None else col
+
+        LOG.info("\t\tComputing {}".format(data_name))
+        #dset_mask = self.datasets['temp']['data'].mask
+        dset_mask = this_granule_mask['temp']
+        #dset_mask = dset_mask[row,col].squeeze()
+
+        LOG.debug("\t\tTemp has shape {}".format(this_granule_data['temp'].shape))
+
+        #dset = self.datasets['temp']['data'][:,:].squeeze() - 273.16
+        dset = this_granule_data['temp'][:,:].squeeze() - 273.16
+
+        low_idx = np.where(dset < -65.)
+        mid_idx = np.where((dset > -65.) * (dset < -60.))
+        hi_idx = np.where(dset > -60.)
+        dset[low_idx] = 0.
+        dset[mid_idx] = 1.
+        dset[hi_idx] = 2.
+
+        dset = ma.array(dset,mask=dset_mask)
+
+        self.datasets[data_name]['attrs'] = self.datasets['temp']['attrs']
 
         return dset
 
@@ -448,39 +539,16 @@ class HSRTV():
         return dset
 
 
-    def cold_air_aloft(self,dfile_obj,data_name,level):
-        '''
-        Custom method to returns the temperature.
-        '''
-        LOG.info("\t\tComputing {}".format(data_name))
-        dset_mask = self.datasets['temp']['data'].mask
-
-        dset = self.datasets['temp']['data'] - 273.16
-
-        low_idx = np.where(dset < -65.)
-        mid_idx = np.where((dset > -65.) * (dset < -60.))
-        hi_idx = np.where(dset > -60.)
-        dset[low_idx] = 0.
-        dset[mid_idx] = 1.
-        dset[hi_idx] = 2.
-
-        dset = ma.array(dset,mask=dset_mask)
-
-        self.datasets[data_name]['attrs'] = self.datasets['temp']['attrs']
-
-        return dset
-
-
     def print_dataset_manifest(self,pkg_obj):
         dataset_names = list(pkg_obj.datasets.keys())
         dataset_names.remove('file_attrs')
-        LOG.info("datasets: {}".format(dataset_names))
+        LOG.debug("datasets: {}".format(dataset_names))
 
         for key in dataset_names:
-            LOG.info("For dataset {}:".format(key))
-            LOG.info("\tdatasets['{}']['attrs'] = {}".format(
+            LOG.debug("For dataset {}:".format(key))
+            LOG.debug("\tdatasets['{}']['attrs'] = {}".format(
                     key,pkg_obj.datasets[key]['attrs']))
-            LOG.info("\tdatasets['{}']['data'].shape = {}".format(
+            LOG.debug("\tdatasets['{}']['data'].shape = {}".format(
                     key,pkg_obj.datasets[key]['data'].shape))
         print ""
 
@@ -567,4 +635,137 @@ class HSRTV():
         dt_image_date = datetime.strptime(image_date_time,'d%Y%m%d_t%H%M%S')
         return dt_image_date
 
+def gphite( p, t, w, z_sfc, n_levels, i_dir):
+
+    '''
+    version of 18.05.00
+
+    PURPOSE:
+
+     Routine to compute geopotential height given the atmospheric state.
+       Includes virtual temperature adjustment.
+
+    CREATED:
+
+     19-Sep-1996 Received from Hal Woolf, recoded by Paul van Delst
+     18-May-2000 Logic error related to z_sfc corrected by Hal Woolf
+
+     ARGUMENTS:
+
+        Input
+       --------
+          p     - REAL*4 pressure array (mb)
+
+          t     - REAL*4 temperature profile array (K)
+
+          w     - REAL*4 water vapour profile array (g/kg)
+
+        z_sfc   - REAL*4 surface height (m).  0.0 if not known.
+
+       n_levels - INT*4 number of elements used in passed arrays
+
+        i_dir   - INT*4 direction of increasing layer number
+
+                    i_dir = +1, Level(1) == p(top)         } satellite/AC
+                                Level(n_levels) == p(sfc)  }    case
+
+                    i_dir = -1, Level(1) == p(sfc)         } ground-based
+                                Level(n_levels) == p(top)  }    case
+
+        Output
+       --------
+          z     - REAL*4 pressure level height array (m)
+
+    COMMENTS:
+
+      Dimension of height array may not not be the same as that of the
+        input profile data.
+
+    ======================================================================
+    python version  of gphite.f
+    ======================================================================
+    '''
+
+    # -- Parameters
+
+    rog = 29.2898
+    fac = 0.5 * rog
+
+
+    #-----------------------------------------------------------------------
+    #  -- Calculate virtual temperature adjustment and exponential       --
+    #  -- pressure height for level above surface.  Also set integration --
+    #  -- loop bounds                                                    --
+    #-----------------------------------------------------------------------
+
+    if ( i_dir > 0 ) :
+
+        # Data stored top down
+
+        v_lower = t[n_levels] * ( 1.0 + ( 0.00061 * w[n_levels] ) )
+
+        algp_lower = np.log( p[n_levels] )
+
+        i_start = n_levels-1
+        i_end   = 1
+
+    else:
+
+        # Data stored bottom up
+
+        v_lower = t[1] * ( 1.0 + ( 0.00061 * w[1] ) )
+
+        algp_lower = np.log( p[1] )
+
+        i_start = 2
+        i_end   = n_levels
+
+    #-----------------------------------------------------------------------
+    #                     -- Assign surface height --
+    #-----------------------------------------------------------------------
+
+    hgt = z_sfc
+
+    # .. Following added 18 May 2000 ... previously, z(n_levels) for downward
+    #       (usual) case was not defined!
+
+    if(i_dir > 0):
+        z[n_levels] = z_sfc
+    else:
+        z[1] = z_sfc;
+
+    # .. End of addition
+
+    #-----------------------------------------------------------------------
+    #             -- Loop over layers always from sf% -> top --
+    #-----------------------------------------------------------------------
+
+    #for l=96:90
+    #for l = i_start:-1*i_dir:i_end:
+    level_idx = np.arange(nlevels)
+    for l in level_idx[::-1**i_dir]:
+
+        # Apply virtual temperature adjustment for upper level
+
+        v_upper = t[l]
+
+        if  ( p[l] >= 300.0 ):
+            v_upper = v_upper * ( 1.0 + ( 0.00061 * w[l] ) )
+
+        # Calculate exponential pressure height for upper layer
+
+        algp_upper = np.log( p[l] )
+
+        # Calculate height
+
+        hgt = hgt + ( fac*(v_upper+v_lower)*(algp_lower-algp_upper) )
+
+        # Overwrite values for next layer
+
+        v_lower = v_upper
+        algp_lower = algp_upper
+
+        # Store heights in same direction as other data
+
+        z[l] = hgt   # geopotential height
 

@@ -328,7 +328,7 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
         if (lat_0==None) or (lon_0==None):
             # Non lat/lon pair given, use the central unmasked values.
             row_idx = int(np.floor(nrows/2.))
-            col_idx = int(np.floor(ncols/2.))
+            col_idx = int(np.floor(ncols/2.))-3
             lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
             lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
             LOG.info("No lat/lon pair given, using ({:4.2f},{:4.2f})".
@@ -688,7 +688,7 @@ def plotData(data,data_mask,units,pngName,stride=1,dpi=200):
     canvas.print_figure(pngName,dpi=dpi)
 
 
-def plotMapDataContinuous(lat, lon, data, pngName,
+def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
         dataset_options, plot_style_options, plot_options):
         
     # Copy the plot options to local variables
@@ -746,7 +746,6 @@ def plotMapDataContinuous(lat, lon, data, pngName,
     '''
 
     # If our data is all missing, return
-    data_mask = data.mask
     if (np.sum(data_mask) == data.size):
         LOG.warn("Entire {} dataset is missing, aborting".\
                 format(cbar_title))
@@ -901,6 +900,9 @@ def plotMapDataContinuous(lat, lon, data, pngName,
     m.drawmeridians(np.arange(-180,180,30), color = '0.25', 
             linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
 
+    LOG.info("data.shape = {}".format(data.shape))
+    LOG.info("data_mask.shape = {}".format(data_mask.shape))
+
     data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
 
     plotMin = np.min(data) if plotMin==None else plotMin
@@ -965,7 +967,7 @@ def plotMapDataContinuous(lat, lon, data, pngName,
     return 0
 
 
-def plotMapDataDiscrete(lat, lon, data, pngName,
+def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
         dataset_options, plot_style_options, plot_options):
         
     # Copy the plot options to local variables
@@ -1023,7 +1025,6 @@ def plotMapDataDiscrete(lat, lon, data, pngName,
     '''
 
     # If our data is all missing, return
-    data_mask = data.mask
     if (np.sum(data_mask) == data.size):
         LOG.warn("Entire {} dataset is missing, aborting".\
                 format(cbar_title))
@@ -1270,8 +1271,8 @@ def plotMapDataDiscrete(lat, lon, data, pngName,
     return 0
 
 
-def plotSliceContinuous(lat, lon, data, pngName,
-        dataset_options, plot_style_options, plot_options):
+def plotSliceContinuous(lat, lon, lat_arr, lon_arr, data, data_mask,
+        pngName, dataset_options, plot_style_options, plot_options):
         
     # Copy the plot options to local variables
     #title         = plot_options['title']
@@ -1332,7 +1333,7 @@ def plotSliceContinuous(lat, lon, data, pngName,
     LOG.info("data.shape = {}".format(data.shape))
 
     # If our data is all missing, return
-    data_mask = data.mask
+    #data_mask = data.mask
     if (np.sum(data_mask) == data.size):
         LOG.warn("Entire {} dataset is missing, aborting".\
                 format(cbar_title))
@@ -1340,29 +1341,22 @@ def plotSliceContinuous(lat, lon, data, pngName,
 
     # General Setup
     figWidth,figHeight = 10.,6.
-    ax_rect = [0.05, 0.17, 0.90, 0.72  ] # [left,bottom,width,height]
+    ax_rect = [0.10, 0.20, 0.78, 0.69  ] # [left,bottom,width,height]
 
     fig = Figure(figsize=(figWidth,figHeight))
     canvas = FigureCanvas(fig)
 
     ax = fig.add_axes(ax_rect)
 
-    # Common plotting options...
-    plot_kw = {
-        'ax'         : ax,
-        'fix_aspect' : True
-    }
-
-
-    #data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
+    data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
 
     plotMin = np.min(data) if plotMin==None else plotMin
     plotMax = np.max(data) if plotMax==None else plotMax
     LOG.debug("plotMin = {}".format(plotMin))
     LOG.debug("plotMax = {}".format(plotMax))
 
-
-    im = ax.imshow(data,axes=ax,interpolation='nearest',vmin=plotMin,vmax=plotMax)
+    im = ax.imshow(data,axes=ax,interpolation='nearest',vmin=plotMin,vmax=plotMax,
+            aspect='auto',cmap=cmap)
 
     txt = ax.set_title(title,fontsize=11,y=1.04)
 
@@ -1371,36 +1365,101 @@ def plotSliceContinuous(lat, lon, data, pngName,
     #ppl.setp(ax.get_xticklabels(), visible=False)
     #ppl.setp(ax.get_yticklabels(), visible=False)
 
-    cax_rect = [0.05 , 0.05, 0.90 , 0.05 ] # [left,bottom,width,height]
+    # add a colorbar axis
+    cax_rect = [0.10 , 0.05, 0.78 , 0.05 ] # [left,bottom,width,height]
     cax = fig.add_axes(cax_rect,frameon=False) # setup colorbar axes
+
+    # Plot the colorbar.
     cb = fig.colorbar(im, cax=cax, orientation='horizontal')
 
-    txt = cax.set_title(cbar_title)
+    ppl.setp(cax.get_xticklabels(),fontsize=font_scale*9)
+    ppl.setp(cax.get_xticklines(),visible=True)
+
+    # Colourbar title
+    cax_title = ppl.setp(cax,title=cbar_title)
+    ppl.setp(cax_title,fontsize=font_scale*10)
 
     #
     # Add a small globe with the swath indicated on it #
     #
     # Create main axes instance, leaving room for colorbar at bottom,
     # and also get the Bbox of the axes instance
-    glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
+
+    globe_proj = 'lcc'
+
+    # Compute the central lat and lon if they are not specified
+    if (lat_0==None) or (lon_0==None):
+        geo_shape = lat_arr.shape
+        nrows, ncols = geo_shape[0],geo_shape[1]
+        LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
+        # Non lat/lon pair given, use the central unmasked values.
+        row_idx = int(nrows/2.)
+        col_idx = int(ncols/2.)
+        lat_0 = lat_arr[row_idx,col_idx] if lat_0==None else lat_0
+        lon_0 = lon_arr[row_idx,col_idx] if lon_0==None else lon_0
+        LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
+                format(lat_0,lon_0))
+
+    LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat_arr),np.max(lat_arr)))
+    LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon_arr),np.max(lon_arr)))
+
+    glax_rect = [0.85, 0.69, 0.18, 0.20 ] # [left,bottom,width,height]
     glax = fig.add_axes(glax_rect)
 
-    m_globe = Basemap(lat_0=0.,lon_0=0.,\
-        ax=glax,resolution='c',area_thresh=10000.,projection='robin')
+    #m_globe = Basemap(lat_0=0.,lon_0=0.,\
+        #ax=glax,resolution='c',area_thresh=10000.,projection='lcc')
+
+    LOG.info("scale = {}".format(scale))
+    windowWidth = scale *(0.35*12000000.)
+    windowHeight = scale *(0.50*9000000.)
+
+    # Common plotting options...
+    plot_kw = {
+        'ax'         : glax,
+        'projection' : globe_proj,
+        'lon_0'      : lon_0,
+        'lat_0'      : lat_0,
+        'width'      : windowWidth,
+        'height'     : windowHeight,
+        'fix_aspect' : True,
+        'resolution' : 'c'
+    }
+
+
+    if ((globe_proj=='aea' or globe_proj=='lcc' or globe_proj=='eqdc') and (np.abs(lat_0)<1.e-6)):
+        plot_kw['lat_1'] = 1.
+        plot_kw['lat_2'] = 1.
+
+    # Create the Basemap plotting object
+    LOG.info("Plotting for {} projection...".format(proj))
+    try:
+        m_globe = Basemap(**plot_kw)
+    except ValueError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
+    except RuntimeError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
 
     # If we previously had a zero size data array, increase the pointSize
     # so the data points are visible on the global plot
     if (np.shape(lon[::stride])[0]==2) :
         pointSize = 5.
 
-    x,y=m_globe(lon[::stride],lat[::stride])
-    swath = np.zeros(np.shape(x),dtype=int)
-
     m_globe.drawmapboundary(linewidth=0.1)
     m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
     m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
 
+    #swath = np.zeros(np.shape(x),dtype=int)
+
+    x,y=m_globe(lon_arr[::stride,::stride],lat_arr[::stride,::stride])
+    p_globe = m_globe.scatter(x,y,s=0.5,c="#B1B1B1",axes=glax,edgecolors='none',zorder=2)
+
+    x,y=m_globe(lon[::stride],lat[::stride])
     p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
+
+    #p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
+    #p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
 
     # Redraw the figure
     canvas.draw()
@@ -1410,8 +1469,8 @@ def plotSliceContinuous(lat, lon, data, pngName,
     return 0
 
 
-def plotSliceDiscrete(lat, lon, data, pngName,
-        dataset_options, plot_style_options, plot_options):
+def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, data, data_mask,
+        pngName, dataset_options, plot_style_options, plot_options):
         
     # Copy the plot options to local variables
     #title         = plot_options['title']
@@ -1467,100 +1526,20 @@ def plotSliceDiscrete(lat, lon, data, pngName,
     Plot the input dataset in mapped to particular projection
     '''
 
+    LOG.info("lat.shape = {}".format(lat.shape))
+    LOG.info("lon.shape = {}".format(lon.shape))
+    LOG.info("data.shape = {}".format(data.shape))
+
     # If our data is all missing, return
-    data_mask = data.mask
+    #data_mask = data.mask
     if (np.sum(data_mask) == data.size):
         LOG.warn("Entire {} dataset is missing, aborting".\
                 format(cbar_title))
         return -1
 
-    # Determine if this is a global projection, so we can avoid having the 
-    # global "outset" plot.
-    global_plot = False
-    if (proj=='moll' 
-            or proj=='hammer'
-            or proj=='robin'
-            or proj=='eck4'
-            or proj=='kav7'
-            or proj=='mbtfpq'
-            or proj=='sinu'
-            or proj=='cyl'
-            or proj=='merc'
-            or proj=='mill'
-            or proj=='gall'
-            or proj=='cea'
-            or proj=='vandg'):
-        global_plot = True
-
-    # Determine if this is a "rectangular" projection, so we can set sensible 
-    # latitude limits.
-    rect_plot = False
-    if (proj=='cyl'
-            or proj=='merc'
-            or proj=='mill'
-            or proj=='gall'
-            or proj=='cea'):
-        rect_plot = True
-
-    if (proj=='geos' or proj=='ortho' or global_plot):
-        LOG.info("Setting lat_0 and lon_0 for {} projection.".format(proj))
-        lat_0 = 0. if lat_0==None else lat_0
-        lon_0 = 0. if lon_0==None else lon_0
-        boundinglat = None
-
-    if (proj=='npstere' and bounding_lat<-30.):
-        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat) 
-         of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
-        bounding_lat = -30.
-
-    if (proj=='spstere' and bounding_lat>30.):
-        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat) 
-         of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
-        bounding_lat = 30.
-
-    if (proj=='npaeqd' and bounding_lat<-30.):
-        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
-         of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
-        bounding_lat = -30.
-
-    if (proj=='spaeqd' and bounding_lat>30.):
-        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
-         of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
-        bounding_lat = 30.
-
-    if (proj=='nplaea' and bounding_lat<=0.):
-        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
-         of {} degrees must be in northern hemisphere, setting to +1 degrees latitude.""".format(bounding_lat))
-        bounding_lat = 1.
-
-    if (proj=='splaea' and bounding_lat>=0.):
-        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
-         of {} degrees must be in southern hemisphere, setting to -1 degrees latitude.""".format(bounding_lat))
-        bounding_lat = -1.
-
-    # Compute the central lat and lon if they are not specified
-    if (lat_0==None) or (lon_0==None):
-        geo_shape = lat.shape
-        nrows, ncols = geo_shape[0],geo_shape[1]
-        LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
-        # Non lat/lon pair given, use the central unmasked values.
-        row_idx = int(nrows/2.)
-        col_idx = int(ncols/2.)
-        lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
-        lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
-        LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
-                format(lat_0,lon_0))
-
-    LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat),np.max(lat)))
-    LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon),np.max(lon)))
-
     # General Setup
-    if global_plot:
-        figWidth,figHeight = 10.,6.
-        ax_rect = [0.05, 0.17, 0.90, 0.72  ] # [left,bottom,width,height]
-    else:
-        figWidth,figHeight = 8.,8.
-        ax_rect = [0.05, 0.15, 0.90, 0.75  ] # [left,bottom,width,height]
+    figWidth,figHeight = 10.,6.
+    ax_rect = [0.10, 0.20, 0.78, 0.69  ] # [left,bottom,width,height]
 
     fig = Figure(figsize=(figWidth,figHeight))
     canvas = FigureCanvas(fig)
@@ -1581,62 +1560,6 @@ def plotSliceDiscrete(lat, lon, data, pngName,
     LOG.debug('plotLims = {},{}'.format(plotLims[0],plotLims[1]))
     vmin,vmax = plotLims[0],plotLims[-1]
 
-    # Common plotting options...
-    plot_kw = {
-        'ax'         : ax,
-        'projection' : proj,
-        'lon_0'      : lon_0,
-        'lat_0'      : lat_0,
-        'fix_aspect' : True,
-        'resolution' : map_res
-    }
-
-    # Projection dependent plotting options
-    if global_plot:
-        if rect_plot:
-            plot_kw['llcrnrlat'] =  -80. if latMin==None else latMin
-            plot_kw['urcrnrlat'] =   80. if latMax==None else latMax
-            plot_kw['llcrnrlon'] = -180. if lonMin==None else lonMin
-            plot_kw['urcrnrlon'] =  180. if lonMax==None else lonMax
-        else:
-            pass
-    else:
-        LOG.info("scale = {}".format(scale))
-        windowWidth = scale *(0.35*12000000.)
-        windowHeight = scale *(0.50*9000000.)
-        plot_kw['width'] = windowWidth
-        plot_kw['height'] = windowHeight
-
-    if (proj=='npstere' or proj=='spstere' or
-            proj=='nplaea' or proj=='splaea' or
-            proj=='npaeqd' or proj=='spaeqd'):
-        plot_kw['boundinglat'] = bounding_lat
-
-    if ((proj=='aea' or proj=='lcc' or proj=='eqdc') and (np.abs(lat_0)<1.e-6)):
-        plot_kw['lat_1'] = 1.
-        plot_kw['lat_2'] = 1.
-
-    # Create the Basemap plotting object
-    LOG.info("Plotting for {} projection...".format(proj))
-    try:
-        m = Basemap(**plot_kw)
-    except ValueError, err :
-            LOG.error("{} ({} projection), aborting.".format(err,proj))
-            return 1
-    except RuntimeError, err :
-            LOG.error("{} ({} projection), aborting.".format(err,proj))
-            return 1
-
-    x,y=m(lon[::stride,::stride],lat[::stride,::stride])
-
-    m.drawcoastlines(linewidth = 0.5)
-    m.drawcountries(linewidth = 0.5)
-    m.fillcontinents(color='0.85',zorder=0)
-    m.drawparallels(np.arange( -90, 91,30), color = '0.25', 
-            linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
-    m.drawmeridians(np.arange(-180,180,30), color = '0.25', 
-            linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
-
     data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
 
     plotMin = np.min(data) if plotMin==None else plotMin
@@ -1644,26 +1567,23 @@ def plotSliceDiscrete(lat, lon, data, pngName,
     LOG.debug("plotMin = {}".format(plotMin))
     LOG.debug("plotMax = {}".format(plotMax))
 
-    if doScatterPlot:
-        cs = m.scatter(x,y,s=pointSize,c=data,axes=ax,edgecolors='none',
-                vmin=plotMin,vmax=plotMax,cmap=cmap)
-    else:
-        cs = m.pcolor(x,y,data,axes=ax,edgecolors='none',antialiased=False,
-                vmin=plotMin,vmax=plotMax,cmap=cmap)
+    im = ax.imshow(data,axes=ax,interpolation='nearest', vmin=plotMin,vmax=plotMax,
+            aspect='auto',cmap=cmap)
 
     txt = ax.set_title(title,fontsize=11,y=1.04)
 
-    ppl.setp(ax.get_xticklines(),visible=False)
-    ppl.setp(ax.get_yticklines(),visible=False)
-    ppl.setp(ax.get_xticklabels(), visible=False)
-    ppl.setp(ax.get_yticklabels(), visible=False)
+    #ppl.setp(ax.get_xticklines(),visible=False)
+    #ppl.setp(ax.get_yticklines(),visible=False)
+    #ppl.setp(ax.get_xticklabels(), visible=False)
+    #ppl.setp(ax.get_yticklabels(), visible=False)
 
     # add a colorbar axis
-    cax_rect = [0.05 , 0.05, 0.90 , 0.05 ] # [left,bottom,width,height]
+    cax_rect = [0.10 , 0.05, 0.78 , 0.05 ] # [left,bottom,width,height]
     cax = fig.add_axes(cax_rect,frameon=False) # setup colorbar axes
 
     # Plot the colorbar.
-    cb = fig.colorbar(cs, cax=cax, orientation='horizontal')
+    cb = fig.colorbar(im, cax=cax, orientation='horizontal')
+
     ppl.setp(cax.get_xticklabels(),fontsize=font_scale*9)
     ppl.setp(cax.get_xticklines(),visible=False)
 
@@ -1681,31 +1601,84 @@ def plotSliceDiscrete(lat, lon, data, pngName,
     #
     # Add a small globe with the swath indicated on it #
     #
-    if not global_plot:
-        # Create main axes instance, leaving room for colorbar at bottom,
-        # and also get the Bbox of the axes instance
-        glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
-        glax = fig.add_axes(glax_rect)
+    # Create main axes instance, leaving room for colorbar at bottom,
+    # and also get the Bbox of the axes instance
 
-        m_globe = Basemap(lat_0=0.,lon_0=0.,\
-            ax=glax,resolution='c',area_thresh=10000.,projection='robin')
+    globe_proj = 'lcc'
 
-        # If we previously had a zero size data array, increase the pointSize
-        # so the data points are visible on the global plot
-        if (np.shape(lon[::stride,::stride])[0]==2) :
-            pointSize = 5.
+    # Compute the central lat and lon if they are not specified
+    if (lat_0==None) or (lon_0==None):
+        geo_shape = lat_arr.shape
+        nrows, ncols = geo_shape[0],geo_shape[1]
+        LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
+        # Non lat/lon pair given, use the central unmasked values.
+        row_idx = int(nrows/2.)
+        col_idx = int(ncols/2.)
+        lat_0 = lat_arr[row_idx,col_idx] if lat_0==None else lat_0
+        lon_0 = lon_arr[row_idx,col_idx] if lon_0==None else lon_0
+        LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
+                format(lat_0,lon_0))
 
-        x,y=m_globe(lon[::stride,::stride],lat[::stride,::stride])
-        swath = np.zeros(np.shape(x),dtype=int)
+    LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat_arr),np.max(lat_arr)))
+    LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon_arr),np.max(lon_arr)))
 
-        m_globe.drawmapboundary(linewidth=0.1)
-        m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
-        m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
+    glax_rect = [0.85, 0.69, 0.18, 0.20 ] # [left,bottom,width,height]
+    glax = fig.add_axes(glax_rect)
 
-        p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
-    else:
-        pass
+    #m_globe = Basemap(lat_0=0.,lon_0=0.,\
+        #ax=glax,resolution='c',area_thresh=10000.,projection='lcc')
 
+    LOG.info("scale = {}".format(scale))
+    windowWidth = scale *(0.35*12000000.)
+    windowHeight = scale *(0.50*9000000.)
+
+    # Common plotting options...
+    plot_kw = {
+        'ax'         : glax,
+        'projection' : globe_proj,
+        'lon_0'      : lon_0,
+        'lat_0'      : lat_0,
+        'width'      : windowWidth,
+        'height'     : windowHeight,
+        'fix_aspect' : True,
+        'resolution' : 'c'
+    }
+
+
+    if ((globe_proj=='aea' or globe_proj=='lcc' or globe_proj=='eqdc') and (np.abs(lat_0)<1.e-6)):
+        plot_kw['lat_1'] = 1.
+        plot_kw['lat_2'] = 1.
+
+    # Create the Basemap plotting object
+    LOG.info("Plotting for {} projection...".format(proj))
+    try:
+        m_globe = Basemap(**plot_kw)
+    except ValueError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
+    except RuntimeError, err :
+            LOG.error("{} ({} projection), aborting.".format(err,proj))
+            return 1
+
+    # If we previously had a zero size data array, increase the pointSize
+    # so the data points are visible on the global plot
+    if (np.shape(lon[::stride])[0]==2) :
+        pointSize = 5.
+
+    m_globe.drawmapboundary(linewidth=0.1)
+    m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
+    m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
+
+    #swath = np.zeros(np.shape(x),dtype=int)
+
+    x,y=m_globe(lon_arr[::stride,::stride],lat_arr[::stride,::stride])
+    p_globe = m_globe.scatter(x,y,s=0.5,c="#B1B1B1",axes=glax,edgecolors='none',zorder=2)
+
+    x,y=m_globe(lon[::stride],lat[::stride])
+    p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
+
+    #p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
+    #p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
 
     # Redraw the figure
     canvas.draw()
