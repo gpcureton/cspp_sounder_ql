@@ -1355,10 +1355,20 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, data, data_mask,
     LOG.debug("plotMin = {}".format(plotMin))
     LOG.debug("plotMax = {}".format(plotMax))
 
+    #ax.set_xticklabels(np.linspace(0,10,11), axes=ax,fontsize=9)
+    #ax.set_xticks(map(str,np.linspace(0,10,11)))
+    #ax.set_yticklabels(np.linspace(0,10,11), axes=ax,fontsize=9)
+
     im = ax.imshow(data,axes=ax,interpolation='nearest',vmin=plotMin,vmax=plotMax,
-            aspect='auto',cmap=cmap)
+            aspect='auto',cmap=cmap,extent=(0,95,20,10))
 
     txt = ax.set_title(title,fontsize=11,y=1.04)
+
+    #ax.set_xticklabels(np.linspace(0,1,96))
+    #ax.set_yticklabels(0.,1.,axes=ax)
+    #ax.set_yticklabels(map(str,np.linspace(0,1,101)))
+    #ax.set_yticklabels(np.linspace(0,10,11), axes=ax,fontsize=9)
+    #print ax.
 
     #ppl.setp(ax.get_xticklines(),visible=False)
     #ppl.setp(ax.get_yticklines(),visible=False)

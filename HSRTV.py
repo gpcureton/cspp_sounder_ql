@@ -231,6 +231,8 @@ class HSRTV():
             for dsets in ['lat_row','lat_col','lon_row','lon_col']:
                 self.datasets[dsets] = {}
 
+            self.col = 44 # GPC: FIXME
+
             self.datasets['lat_row']['data'] = self.datasets['lat']['data'][self.row,:]
             self.datasets['lat_col']['data'] = self.datasets['lat']['data'][:,self.col]
             self.datasets['lat_row']['attrs'] =  dict(self.datasets['lat']['attrs'])
@@ -245,7 +247,6 @@ class HSRTV():
             self.dsets_to_read.remove('lat')
             self.dsets_to_read.remove('lon')
 
-            #self.col = 14 # GPC: FIXME
             LOG.info(">>> Reading in the remaining dataset slices..")
             LOG.debug("(level,row,col)  = ({}, {}, {})".format(None,self.row,self.col))
             # This is to slice along the rows
@@ -635,7 +636,8 @@ class HSRTV():
         dt_image_date = datetime.strptime(image_date_time,'d%Y%m%d_t%H%M%S')
         return dt_image_date
 
-def gphite( p, t, w, z_sfc, n_levels, i_dir):
+
+def gphite( press, temp, wvap, z_sfc, n_levels, i_dir):
 
     '''
     version of 18.05.00
@@ -654,23 +656,23 @@ def gphite( p, t, w, z_sfc, n_levels, i_dir):
 
         Input
        --------
-          p     - REAL*4 pressure array (mb)
+       press    - REAL*4 pressure array (mb)
 
-          t     - REAL*4 temperature profile array (K)
+       temp     - REAL*4 temperature profile array (K)
 
-          w     - REAL*4 water vapour profile array (g/kg)
+       wvap     - REAL*4 water vapour profile array (g/kg)
 
-        z_sfc   - REAL*4 surface height (m).  0.0 if not known.
+       z_sfc    - REAL*4 surface height (m).  0.0 if not known.
 
        n_levels - INT*4 number of elements used in passed arrays
 
         i_dir   - INT*4 direction of increasing layer number
 
-                    i_dir = +1, Level(1) == p(top)         } satellite/AC
-                                Level(n_levels) == p(sfc)  }    case
+                    i_dir = +1, Level[0] == p[top]         } satellite/AC
+                                Level[n_levels-1] == p[sfc]  }    case
 
-                    i_dir = -1, Level(1) == p(sfc)         } ground-based
-                                Level(n_levels) == p(top)  }    case
+                    i_dir = -1, Level[0] == p[sfc]         } ground-based
+                                Level[n_levels-1] == p[top]  }    case
 
         Output
        --------
@@ -691,6 +693,28 @@ def gphite( p, t, w, z_sfc, n_levels, i_dir):
     rog = 29.2898
     fac = 0.5 * rog
 
+    # Determine the level of the lowest valid temp and wvap values in the 
+    # profile...
+
+    profile_mask = temp.mask + wvap.mask
+
+    valid_idx = np.where(profile_mask!=True)[0]
+
+    lowest_valid_idx = valid_idx[-1]
+    lowest_valid_temp = temp[lowest_valid_idx]
+    lowest_valid_wvap = wvap[lowest_valid_idx]
+    lowest_valid_pressure = press[lowest_valid_idx]
+
+    LOG.debug("Lowest valid idx is {} at pressure {}".format(lowest_valid_idx,lowest_valid_pressure))
+    LOG.debug("Lowest valid temp is {} at pressure {}".format(lowest_valid_temp,lowest_valid_pressure))
+    LOG.debug("Lowest valid wvap is {} at pressure {}".format(lowest_valid_wvap,lowest_valid_pressure))
+
+    # Reset number of levels, and truncate profile arrays to exclude missing
+    # data at the bottom of the profile.
+    n_levels = lowest_valid_idx+1
+    t = temp[:lowest_valid_idx+1]
+    w = wvap[:lowest_valid_idx+1]
+    p = press[:lowest_valid_idx+1]
 
     #-----------------------------------------------------------------------
     #  -- Calculate virtual temperature adjustment and exponential       --
@@ -698,27 +722,37 @@ def gphite( p, t, w, z_sfc, n_levels, i_dir):
     #  -- loop bounds                                                    --
     #-----------------------------------------------------------------------
 
+    z = np.ones(n_levels)*(-999.)
+
+    LOG.debug("n_levels = {}".format(n_levels))
+    LOG.debug("t.shape = {}".format(t.shape))
+    LOG.debug("t[n_levels-1] = {}".format(t[-1]))
+
     if ( i_dir > 0 ) :
 
         # Data stored top down
 
-        v_lower = t[n_levels] * ( 1.0 + ( 0.00061 * w[n_levels] ) )
+        v_lower = t[-1] * ( 1.0 + ( 0.00061 * w[-1] ) )
 
-        algp_lower = np.log( p[n_levels] )
+        LOG.debug("v_lower = {}".format(v_lower))
+
+        algp_lower = np.log( p[-1] )
+
+        LOG.debug("algp_lower = {}".format(algp_lower))
 
         i_start = n_levels-1
-        i_end   = 1
+        i_end   = 0
 
     else:
 
         # Data stored bottom up
 
-        v_lower = t[1] * ( 1.0 + ( 0.00061 * w[1] ) )
+        v_lower = t[0] * ( 1.0 + ( 0.00061 * w[0] ) )
 
-        algp_lower = np.log( p[1] )
+        algp_lower = np.log( p[0] )
 
-        i_start = 2
-        i_end   = n_levels
+        i_start = 1
+        i_end   = n_levels-1
 
     #-----------------------------------------------------------------------
     #                     -- Assign surface height --
@@ -730,9 +764,9 @@ def gphite( p, t, w, z_sfc, n_levels, i_dir):
     #       (usual) case was not defined!
 
     if(i_dir > 0):
-        z[n_levels] = z_sfc
+        z[-1] = z_sfc
     else:
-        z[1] = z_sfc;
+        z[0] = z_sfc;
 
     # .. End of addition
 
@@ -740,10 +774,11 @@ def gphite( p, t, w, z_sfc, n_levels, i_dir):
     #             -- Loop over layers always from sf% -> top --
     #-----------------------------------------------------------------------
 
-    #for l=96:90
-    #for l = i_start:-1*i_dir:i_end:
-    level_idx = np.arange(nlevels)
-    for l in level_idx[::-1**i_dir]:
+    level_idx = np.arange(n_levels)
+
+    # Looping from ground level to TOA.
+
+    for l in level_idx[::-1*i_dir]:
 
         # Apply virtual temperature adjustment for upper level
 
@@ -760,6 +795,7 @@ def gphite( p, t, w, z_sfc, n_levels, i_dir):
 
         hgt = hgt + ( fac*(v_upper+v_lower)*(algp_lower-algp_upper) )
 
+
         # Overwrite values for next layer
 
         v_lower = v_upper
@@ -769,3 +805,49 @@ def gphite( p, t, w, z_sfc, n_levels, i_dir):
 
         z[l] = hgt   # geopotential height
 
+        LOG.debug("p = {:6.1f}, t = {:6.1f}, w = {:6.1f}, z = {:6.1f}".format(
+                p[l],t[l],w[l],z[l]))
+
+    return z
+
+
+def pressure_to_height(p, t, w, z_sfc=0.):
+    gc = 0.98
+    #gc = 1.
+
+    z_sfc = 3161.
+    z1 = gphite( p, t, w, z_sfc, 101,1) * gc
+    z = z1 #* 3.28 # meters to feet
+
+    return z
+
+
+def press2alt(p,z):
+    '''
+    
+    Routine to get altimeter setting from pressure and elevation.
+
+    Inputs/Outputs:
+
+       Variable     Var Type     I/O   Description
+      ----------   ----------   ----- -------------
+       p               RA         O    Pressure (X)
+       z               RA         I    Elevation in meters.
+       alt             RA         I    Altimeter setting (X)
+
+
+    User Notes:
+
+    1.  No quality control is performed in this routine.
+
+    '''
+
+    flg = 99998.0
+    flag = 1e37
+    T0 = 288.0
+    gamma = 0.0065
+    g_Rgamma = 5.2532
+
+    alt = p / ((T0-gamma * z)/T0)**g_Rgamma
+
+    return alt
