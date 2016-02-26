@@ -632,6 +632,12 @@ def main():
 
     input_file = path.basename(input_file_list[0])
 
+    #print 'temp = np.array({})'.format(hsrtv_obj.datasets['temp']['data'][:,0])
+    #print 'wvap = np.array({})'.format(hsrtv_obj.datasets['wvap']['data'][:,0])
+    #print 'temp_gdas = np.array({})'.format(hsrtv_obj.datasets['temp_gdas']['data'][:,0])
+    #print 'relh_gdas = np.array({})'.format(hsrtv_obj.datasets['relh_gdas']['data'][:,0])
+    #print "Hello"
+
     # Get the dataset options
     try:
         dataset_options = sounder_image_data.Dataset_Options.data[dataset]
@@ -640,7 +646,7 @@ def main():
         dataset_options['name'] = dataset
 
     for key in dataset_options.keys():
-        LOG.info("dataset_options['{}'] = {}".format(key,dataset_options[key]))
+        LOG.debug("dataset_options['{}'] = {}".format(key,dataset_options[key]))
 
 
     # Determine the filename
