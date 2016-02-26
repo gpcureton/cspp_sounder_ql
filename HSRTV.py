@@ -55,10 +55,12 @@ dset_name['lon']  = '/Longitude'
 dset_name['ctp']  = '/CTP'
 dset_name['ctt']  = '/CTT'
 dset_name['temp'] = '/TAir'
+dset_name['temp_gdas'] = '/GDAS_TAir'
 dset_name['2temp'] = None
 dset_name['cold_air_aloft'] = None
 dset_name['dwpt'] = '/Dewpnt'
 dset_name['relh'] = '/RelHum'
+dset_name['relh_gdas'] = '/GDAS_RelHum'
 dset_name['wvap'] = '/H2OMMR'
 
 # Dataset types (surface/top; pressure level...)
@@ -69,10 +71,12 @@ dset_type['lon']  = 'single'
 dset_type['ctp']  = 'single'
 dset_type['ctt']  = 'single'
 dset_type['temp'] = 'level'
+dset_type['temp_gdas'] = 'level'
 dset_type['2temp'] = 'level'
 dset_type['cold_air_aloft'] = 'level'
 dset_type['dwpt'] = 'level'
 dset_type['relh'] = 'level'
+dset_type['relh_gdas'] = 'level'
 dset_type['wvap'] = 'level'
 
 # Dataset dependencies for each dataset
@@ -83,10 +87,12 @@ dset_deps['lon']  = []
 dset_deps['ctp']  = []
 dset_deps['ctt']  = []
 dset_deps['temp'] = []
+dset_deps['temp_gdas'] = []
 dset_deps['2temp'] = ['temp']
-dset_deps['cold_air_aloft'] = ['temp']
+dset_deps['cold_air_aloft'] = ['temp','wvap','temp_gdas','relh_gdas']
 dset_deps['dwpt'] = []
 dset_deps['relh'] = []
+dset_deps['relh_gdas'] = []
 dset_deps['wvap'] = []
 
 #dset_deps = {}
@@ -108,10 +114,12 @@ dset_method['lon']  = []
 dset_method['ctp']  = []
 dset_method['ctt']  = []
 dset_method['temp'] = []
+dset_method['temp_gdas'] = []
 dset_method['2temp'] = []
 dset_method['cold_air_aloft'] = []
 dset_method['dwpt'] = []
 dset_method['relh'] = []
+dset_method['relh_gdas'] = []
 dset_method['wvap'] = []
 
 
@@ -231,7 +239,7 @@ class HSRTV():
             for dsets in ['lat_row','lat_col','lon_row','lon_col']:
                 self.datasets[dsets] = {}
 
-            self.col = 44 # GPC: FIXME
+            #self.col = 44 # GPC: FIXME
 
             self.datasets['lat_row']['data'] = self.datasets['lat']['data'][self.row,:]
             self.datasets['lat_col']['data'] = self.datasets['lat']['data'][:,self.col]
@@ -498,7 +506,8 @@ class HSRTV():
         to aviation.
         '''
 
-        LOG.debug("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
+        # Compute the geopotential height 
+        LOG.info("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
 
         level = slice(level) if level == None else level
         row = slice(row) if row == None else row
@@ -511,7 +520,6 @@ class HSRTV():
 
         LOG.debug("\t\tTemp has shape {}".format(this_granule_data['temp'].shape))
 
-        #dset = self.datasets['temp']['data'][:,:].squeeze() - 273.16
         dset = this_granule_data['temp'][:,:].squeeze() - 273.16
 
         low_idx = np.where(dset < -65.)
