@@ -117,7 +117,8 @@ def _argparse():
     import argparse
 
     dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
-    prodChoices=['temp','wvap','dwpt','relh','ctp','ctt','2temp','cold_air_aloft']
+    prodChoices=['temp','temp_gdas','wvap','wvap_gdas','dwpt','relh','relh_gdas',
+                 'ctp','ctt','2temp','cold_air_aloft']
     map_res_choice = ['c','l','i']
     plot_type_choice = ['image','slice']
     map_proj_choice = {

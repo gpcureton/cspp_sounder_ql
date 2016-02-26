@@ -65,6 +65,8 @@ class Dataset_Options:
                 'cmap':cm.jet,
                 'n_levels':256
                 }
+    data['temp_gdas'] = dict(data['temp'])
+    data['temp_gdas']['name'] = 'GDAS temperature'
 
     data['2temp'] = {
                 'name':'temperature',
@@ -98,6 +100,8 @@ class Dataset_Options:
                 'cmap':cm.jet,
                 'n_levels':256
                 }
+    data['wvap_gdas'] = dict(data['wvap'])
+    data['wvap_gdas']['name'] = 'GDAS water vapor mixing ratio'
 
     data['dwpt'] = {
                 'name':'dewpoint temperature',
@@ -130,6 +134,8 @@ class Dataset_Options:
                 'cmap':cm.jet,
                 'n_levels':256
                 }
+    data['relh_gdas'] = dict(data['relh'])
+    data['relh_gdas']['name'] = 'GDAS relative humidity'
 
     data['ctp'] = {
                 'name':'cloud top pressure',

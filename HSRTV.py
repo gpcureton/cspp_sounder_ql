@@ -62,6 +62,7 @@ dset_name['dwpt'] = '/Dewpnt'
 dset_name['relh'] = '/RelHum'
 dset_name['relh_gdas'] = '/GDAS_RelHum'
 dset_name['wvap'] = '/H2OMMR'
+dset_name['wvap_gdas'] = None
 
 # Dataset types (surface/top; pressure level...)
 dset_type = {}
@@ -78,6 +79,7 @@ dset_type['dwpt'] = 'level'
 dset_type['relh'] = 'level'
 dset_type['relh_gdas'] = 'level'
 dset_type['wvap'] = 'level'
+dset_type['wvap_gdas'] = 'level'
 
 # Dataset dependencies for each dataset
 dset_deps = {}
@@ -94,17 +96,7 @@ dset_deps['dwpt'] = []
 dset_deps['relh'] = []
 dset_deps['relh_gdas'] = []
 dset_deps['wvap'] = []
-
-#dset_deps = {}
-#dset_deps['pres'] = []
-#dset_deps['lat']  = []
-#dset_deps['lon']  = []
-#dset_deps['ctp']  = []
-#dset_deps['ctt']  = []
-#dset_deps['temp'] = ['pres']
-#dset_deps['dwpt'] = ['temp']
-#dset_deps['relh'] = ['temp','wvap']
-#dset_deps['wvap'] = ['temp','dwpt']
+dset_deps['wvap_gdas'] = ['temp_gdas','relh_gdas']
 
 # The class method used to read/calculate each dataset.
 dset_method = {}
@@ -121,6 +113,7 @@ dset_method['dwpt'] = []
 dset_method['relh'] = []
 dset_method['relh_gdas'] = []
 dset_method['wvap'] = []
+dset_method['wvap_gdas'] = []
 
 
 class HSRTV():
@@ -191,6 +184,7 @@ class HSRTV():
         # Define any special methods for computing the required dataset
         dset_method['2temp'] = self.temp_times_two
         dset_method['cold_air_aloft'] = self.cold_air_aloft
+        dset_method['wvap_gdas'] = self.wvap_gdas
 
         # Read in the pressure dataset
         LOG.info(">>> Reading in the pressure dataset...")
@@ -496,7 +490,7 @@ class HSRTV():
 
     def cold_air_aloft(self,dfile_obj,data_name,level,row,col,this_granule_data,this_granule_mask):
         '''
-        Custom method to returns the temperature, binned into three categories:
+        Custom method to return the temperature, binned into three categories:
 
         temp < -65 degC             --> 0
         -65 degC < temp < -60 degC  --> 1
@@ -506,7 +500,6 @@ class HSRTV():
         to aviation.
         '''
 
-        # Compute the geopotential height 
         LOG.info("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
 
         level = slice(level) if level == None else level
@@ -514,9 +507,7 @@ class HSRTV():
         col = slice(col) if col == None else col
 
         LOG.info("\t\tComputing {}".format(data_name))
-        #dset_mask = self.datasets['temp']['data'].mask
         dset_mask = this_granule_mask['temp']
-        #dset_mask = dset_mask[row,col].squeeze()
 
         LOG.debug("\t\tTemp has shape {}".format(this_granule_data['temp'].shape))
 
@@ -536,7 +527,45 @@ class HSRTV():
         return dset
 
 
-    def temp_times_two(self,dfile_obj,data_name,level):
+    def wvap_gdas(self,dfile_obj,data_name,level,row,col,this_granule_data,this_granule_mask):
+        '''
+        Custom method to return the water vapor mixing ratio.
+        '''
+
+        LOG.info("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
+
+        level = slice(level) if level == None else level
+        row = slice(row) if row == None else row
+        col = slice(col) if col == None else col
+
+        # Get the pressure 
+        pressure = np.broadcast_to(np.broadcast_to(self.pressure,(10,101)),(10,10,101)).T
+        LOG.info("\t\tpressure  has shape {}".format(pressure.shape))
+        #pressure = pressure[level,row,col].squeeze()
+
+        LOG.info("\t\tComputing {}".format(data_name))
+        dset_mask = this_granule_mask['temp_gdas'] + this_granule_mask['relh_gdas']
+        #dset_mask = np.zeros(this_granule_mask['temp_gdas'].shape,dtype='bool')
+
+        LOG.debug("\t\tGDAS Temp has shape {}".format(this_granule_data['temp_gdas'].shape))
+        LOG.debug("\t\tGDAS RH   has shape {}".format(this_granule_data['relh_gdas'].shape))
+        #LOG.debug("\t\tpressure  has shape {}".format(pressure.shape))
+
+        temp_gdas = this_granule_data['temp_gdas'][:,:].squeeze()
+        relh_gdas = this_granule_data['relh_gdas'][:,:].squeeze()
+
+        dset = relh_gdas[:,:]/100.
+
+        dset = ma.array(dset,mask=dset_mask)
+        self.datasets[data_name]['attrs'] = self.datasets['relh_gdas']['attrs']
+
+        #rh_to_mr_vec = np.vectorize(rh_to_mr)
+        #wvap = rh_to_mr_vec( rh, p, t)
+
+        return dset
+
+
+    def temp_times_two(self,dfile_obj,data_name,level,row,col,this_granule_data,this_granule_mask):
         '''
         Custom method to compute two times the temperature.
         '''
@@ -619,6 +648,8 @@ class HSRTV():
 
 
         return sounding_inputs
+
+
     def get_dset_deps(self,dset):
         '''
         For a particular dataset, returns the prerequisite datasets. Works 
