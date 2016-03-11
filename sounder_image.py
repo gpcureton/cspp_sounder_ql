@@ -200,7 +200,8 @@ def _argparse():
                 'plotMin'  : None,
                 'plot_type'  : 'image',
                 'pointSize':1,
-                'pressure':850.,
+                'pressure':None,
+                'elevation':None,
                 'proj':'lcc',
                 'scale':1,
                 'scatter_plot':False,
@@ -211,7 +212,7 @@ def _argparse():
 
 
     description = '''Create a plot of temperature, dewpoint or something 
-                     else at a particular pressure level. Supports IAPP, MIRS, HSRTV 
+                     else at a particular pressure or elevation level. Supports IAPP, MIRS, HSRTV 
                      and NUCAPS files.'''
 
     usage = "usage: %prog [mandatory args] [options]"
@@ -274,8 +275,17 @@ def _argparse():
                       dest="pressure",
                       default=defaults["pressure"],
                       type=float,
-                      help='''The pressure level (in mbar) to plot.. 
-                      [default: {}]'''.format(defaults["pressure"])
+                      help='''The pressure level (in mbar) to plot [default: {}]. 
+                      Mutually exclusive with --elevation.'''.format(defaults["pressure"])
+                      )
+
+    parser.add_argument('--elevation',
+                      action="store",
+                      dest="elevation",
+                      default=defaults["elevation"],
+                      type=float,
+                      help='''The elevation level (in feet) to plot [default: {}].
+                      Mutually exclusive with --pressure.'''.format(defaults["elevation"])
                       )
 
     parser.add_argument('--plotMin',
@@ -344,6 +354,14 @@ def _argparse():
                       dest="lonMax",
                       type=float,
                       help="Maximum longitude to plot."
+                      )
+
+    parser.add_argument('--footprint',
+                      action="store",
+                      dest="footprint",
+                      type=int,
+                      help='''The cross-track footprint to use when plotting a 
+                      profile slice.'''
                       )
 
     parser.add_argument('--bounding_lat',
@@ -548,6 +566,13 @@ def _argparse():
         if args.dataset=='ctp' or args.dataset=='ctt':
             parser.error("""Datasets 'ctp' and 'ctt' can only be used with IAPP and HSRTV.""")
 
+    # Set up the default behaviour for the pressure and elevation switches
+    if args.pressure!=None and args.elevation!=None:
+        parser.error("""Cannot specify both 'pressure' and 'elevation'.""")
+    elif args.pressure==None and args.elevation==None:
+        args.pressure = 850.
+
+
     # Set up the logging
     verbosity = 0 if args.quiet else args.verbosity
     levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
@@ -580,12 +605,14 @@ def main():
     dataset = options.dataset
     stride = options.stride
     pressure = options.pressure
+    elevation = options.elevation
     lat_0  = options.lat_0
     lon_0  = options.lon_0
     latMin = options.latMin
     lonMin = options.lonMin
     latMax = options.latMax
     lonMax = options.lonMax
+    footprint = options.footprint
     bounding_lat = options.bounding_lat
     plotMin = options.plotMin
     plotMax = options.plotMax
@@ -616,10 +643,15 @@ def main():
     dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
 
     LOG.info("Input pressure = {}".format(pressure))
+    LOG.info("Input elevation = {}".format(elevation))
     
-    hsrtv_obj = HSRTV.HSRTV(input_file_list,dataset,plot_type,pres_0=pressure)
+    #sys.exit(0)
+
+    hsrtv_obj = HSRTV.HSRTV(input_file_list,dataset,plot_type,
+            pres_0=pressure,elev_0=elevation,footprint=footprint)
 
     pres_0 = hsrtv_obj.pres_0
+    elev_0 = hsrtv_obj.elev_0
     lats = hsrtv_obj.datasets['lat']['data']
     lons = hsrtv_obj.datasets['lon']['data']
     data = hsrtv_obj.datasets[dataset]['data']
@@ -628,8 +660,14 @@ def main():
     if plot_type == 'slice':
         lat_col = hsrtv_obj.datasets['lat_col']['data']
         lon_col = hsrtv_obj.datasets['lon_col']['data']
+        pressure = hsrtv_obj.pressure
+        if elevation != None:
+            elevation = hsrtv_obj.datasets['elev_slice']['data']
+
+    #sys.exit(0)
 
     LOG.debug(hsrtv_obj.datasets['file_attrs'].items())
+
 
     input_file = path.basename(input_file_list[0])
 
@@ -711,8 +749,8 @@ def main():
         retval = plot_map(lats, lons, data, data_mask, 
                 output_file, dataset_options, plot_style_options,plot_options)
     if plot_type == 'slice':
-        retval = plot_slice(lat_col, lon_col, lats, lons, data, data_mask,
-                output_file, dataset_options, plot_style_options,plot_options)
+        retval = plot_slice(lat_col, lon_col, lats, lons, pressure, elevation,
+                data, data_mask, output_file, dataset_options, plot_style_options,plot_options)
 
     print ""
     return retval

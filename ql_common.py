@@ -36,7 +36,7 @@ import numpy as np
 from numpy import ma
 import copy
 
-from scipy import vectorize
+from scipy import interpolate
 import scipy.spatial as ss
 
 import matplotlib
@@ -45,6 +45,7 @@ from matplotlib.colors import LogNorm
 from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
 from matplotlib.ticker import LogLocator,LogFormatter
+from matplotlib.mlab import griddata
 
 matplotlib.use('Agg')
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
@@ -327,8 +328,9 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
 
         if (lat_0==None) or (lon_0==None):
             # Non lat/lon pair given, use the central unmasked values.
+            col_offset = 0
             row_idx = int(np.floor(nrows/2.))
-            col_idx = int(np.floor(ncols/2.))-3
+            col_idx = int(np.floor(ncols/2.)) - col_offset
             lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
             lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
             LOG.info("No lat/lon pair given, using ({:4.2f},{:4.2f})".
@@ -1479,7 +1481,7 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, data, data_mask,
     return 0
 
 
-def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, data, data_mask,
+def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, data_mask,
         pngName, dataset_options, plot_style_options, plot_options):
         
     # Copy the plot options to local variables
@@ -1538,7 +1540,18 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, data, data_mask,
 
     LOG.info("lat.shape = {}".format(lat.shape))
     LOG.info("lon.shape = {}".format(lon.shape))
+    LOG.info("lat_arr.shape = {}".format(lat_arr.shape))
+    LOG.info("lon_arr.shape = {}".format(lon_arr.shape))
     LOG.info("data.shape = {}".format(data.shape))
+
+    (nlevels,nrows) = data.shape
+    lat_slice = np.broadcast_to(lat,(nlevels,nrows))
+    LOG.info("lat_slice.shape = {}".format(lat_slice.shape))
+    LOG.info("pressure.shape = {}".format(pressure.shape))
+    pressure_slice = np.broadcast_to(pressure,(nrows,nlevels)).T
+    LOG.info("pressure_slice.shape = {}".format(pressure_slice.shape))
+    LOG.info("elevation = {}".format(elevation))
+    LOG.info("elevation.shape = {}".format(elevation.shape if elevation != None else None))
 
     # If our data is all missing, return
     #data_mask = data.mask
@@ -1577,8 +1590,91 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, data, data_mask,
     LOG.debug("plotMin = {}".format(plotMin))
     LOG.debug("plotMax = {}".format(plotMax))
 
-    im = ax.imshow(data,axes=ax,interpolation='nearest', vmin=plotMin,vmax=plotMax,
-            aspect='auto',cmap=cmap)
+    ###########################################################################
+    # Building interpolated dataset
+    ###########################################################################
+    LOG.info("elevation = {}".format(elevation))
+    
+    numIndexes = 1000
+
+    if elevation != None:
+
+        y = ma.masked_equal(elevation.ravel(),-9999.)
+        x = ma.array(lat_slice.ravel(),mask=y.mask)
+        z = ma.masked_equal(data.ravel(),-9999.)
+        LOG.info("y.shape = {}".format(y.shape))
+        LOG.info("x.shape = {}".format(x.shape))
+        LOG.info("z.shape = {}".format(z.shape))
+        LOG.info("y.compressed().shape = {}".format(y.compressed().shape))
+        LOG.info("x.compressed().shape = {}".format(x.compressed().shape))
+        LOG.info("z.compressed().shape = {}".format(z.compressed().shape))
+        LOG.info("lat_slice.ravel().shape = {}".format(lat_slice.ravel().shape))
+        LOG.info("elevation.ravel().shape = {}".format(elevation.ravel().shape))
+        LOG.info("data.ravel().shape = {}".format(data.ravel().shape))
+
+        im = ax.scatter(x,y,c=z,
+                axes=ax, vmin=plotMin,vmax=plotMax, edgecolors='none',cmap=cmap)
+
+        #xi = np.linspace(np.min(x), np.max(x),numIndexes)
+        #yi = np.linspace(np.min(y), np.max(y),numIndexes)
+        #CAO = griddata(x, y, z, xi, yi,
+                #interp='linear') 
+        #im = ax.scatter(
+                #np.broadcast_to(xi,(numIndexes,len(xi))).ravel(),
+                #np.broadcast_to(yi,(numIndexes,len(yi))).T.ravel(),
+                #c=CAO.ravel(),axes=ax, vmin=plotMin,vmax=plotMax,edgecolors='none',
+                #cmap=cmap)
+
+        ax.set_ylim(np.min(y),50000.)
+
+    else:
+        im = ax.scatter(lat_slice.ravel(),pressure_slice.ravel(),c=data.ravel(),
+                axes=ax, vmin=plotMin,vmax=plotMax, edgecolors='none',cmap=cmap)
+
+        #yi = np.linspace(np.min(pressure_slice), np.max(pressure_slice),numIndexes)
+        #CAO = griddata(lat_slice.ravel(), pressure_slice.ravel(), data.ravel(), xi, yi,
+                #interp='linear') 
+        #im = ax.scatter(
+                #np.broadcast_to(xi,(numIndexes,len(xi))).ravel(),
+                #np.broadcast_to(yi,(numIndexes,len(yi))).T.ravel(),
+                #c=CAO.ravel(),axes=ax, vmin=plotMin,vmax=plotMax,edgecolors='none',
+                #cmap=cmap)
+
+        #ax.set_ylim(np.max(pressure),100.)
+        ax.set_ylim(np.max(pressure),np.min(pressure))
+
+    ax.set_xlim(np.min(lat_slice.ravel()),np.max(lat_slice.ravel()))
+
+    #if not True:
+    #if True:
+        #LOG.info("min,max lat_slice = {},{}".format(np.min(lat_slice), np.max(lat_slice)))
+        #LOG.info("min,max pressure_slice = {},{}".format(np.min(pressure_slice), np.max(pressure_slice)))
+
+        #yi = np.linspace(np.min(pressure_slice), np.max(pressure_slice),numIndexes)
+        #CAO = griddata(lat_slice.ravel(), pressure_slice.ravel(), data.ravel(), xi, yi,
+                #interp='linear') 
+        #LOG.info("lat_slice.ravel().shape = {}".format(lat_slice.ravel().shape))
+        #LOG.info("pressure_slice.ravel().shape = {}".format(pressure_slice.ravel().shape))
+        #LOG.info("data.ravel().shape = {}".format(data.ravel().shape))
+        #LOG.info("xi.shape = {}".format(xi.shape))
+        #LOG.info("yi.shape = {}".format(yi.shape))
+        #LOG.info("CAO.shape = {}".format(CAO.shape))
+
+        ##im = ax.scatter(
+                ##np.broadcast_to(xi,(numIndexes,len(xi))).ravel(),
+                ##np.broadcast_to(yi,(numIndexes,len(yi))).T.ravel(),
+                ##c=CAO.ravel(),axes=ax, vmin=plotMin,vmax=plotMax,edgecolors='none',
+                ##cmap=cmap)
+
+        ##ax.set_ylim(100.,np.min(pressure))
+        #ax.set_ylim(np.max(pressure),np.min(pressure))
+
+        #im = ax.imshow(CAO,axes=ax,interpolation='nearest', vmin=plotMin,vmax=plotMax,
+                #aspect='auto',cmap=cmap)
+    #else:
+        #im = ax.imshow(data,axes=ax,interpolation='nearest', vmin=plotMin,vmax=plotMax,
+                #aspect='auto',cmap=cmap)
+
 
     txt = ax.set_title(title,fontsize=11,y=1.04)
 
