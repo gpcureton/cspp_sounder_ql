@@ -198,6 +198,8 @@ def _argparse():
                 'outputFilePrefix' : None,
                 'plotMax'  : None,
                 'plotMin'  : None,
+                'yMax'  : None,
+                'yMin'  : None,
                 'plot_type'  : 'image',
                 'pointSize':1,
                 'pressure':None,
@@ -354,6 +356,20 @@ def _argparse():
                       dest="lonMax",
                       type=float,
                       help="Maximum longitude to plot."
+                      )
+
+    parser.add_argument('--yMin',
+                      action="store",
+                      dest="yMin",
+                      type=float,
+                      help="Minimum y-axis limit on slice plots."
+                      )
+
+    parser.add_argument('--yMax',
+                      action="store",
+                      dest="yMax",
+                      type=float,
+                      help="Maximum y-axis limit on slice plots."
                       )
 
     parser.add_argument('--footprint',
@@ -612,6 +628,8 @@ def main():
     lonMin = options.lonMin
     latMax = options.latMax
     lonMax = options.lonMax
+    yMin = options.yMin
+    yMax = options.yMax
     footprint = options.footprint
     bounding_lat = options.bounding_lat
     plotMin = options.plotMin
@@ -720,6 +738,8 @@ def main():
     plot_slice = plot_style_options['plot_slice']
 
     #plot_style_options['version'] = cspp_geo_version
+    plot_style_options['yMin'] = yMin
+    plot_style_options['yMax'] = yMax
 
     plot_options = {}
     #plot_options['title'] = "{}\n\n".format(input_file)
@@ -734,6 +754,8 @@ def main():
     plot_options['latMax'] = latMax
     plot_options['lonMax'] = lonMax
     plot_options['bounding_lat'] = bounding_lat
+    plot_options['yMin'] = yMin
+    plot_options['yMax'] = yMax
     #plot_options['plotMin'] = plotMin
     #plot_options['plotMax'] = plotMax
     plot_options['scale'] = scale

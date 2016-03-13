@@ -1498,6 +1498,8 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     lonMax        = plot_options['lonMax']
     #plotMin       = plot_options['plotMin']
     #plotMax       = plot_options['plotMax']
+    yMin          = plot_options['yMin']
+    yMax          = plot_options['yMax']
     bounding_lat  = plot_options['bounding_lat']
     scale         = plot_options['scale']
     #map_res       = plot_options['map_res']
@@ -1595,96 +1597,84 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     ###########################################################################
     LOG.info("elevation = {}".format(elevation))
     
-    numIndexes = 1000
+    num_x_indicies = 100
+    num_y_indicies = 100
 
     if elevation != None:
 
-        y = ma.masked_equal(elevation.ravel(),-9999.)
-        x = ma.array(lat_slice.ravel(),mask=y.mask)
-        z = ma.masked_equal(data.ravel(),-9999.)
-        LOG.info("y.shape = {}".format(y.shape))
-        LOG.info("x.shape = {}".format(x.shape))
-        LOG.info("z.shape = {}".format(z.shape))
-        LOG.info("y.compressed().shape = {}".format(y.compressed().shape))
-        LOG.info("x.compressed().shape = {}".format(x.compressed().shape))
-        LOG.info("z.compressed().shape = {}".format(z.compressed().shape))
-        LOG.info("lat_slice.ravel().shape = {}".format(lat_slice.ravel().shape))
-        LOG.info("elevation.ravel().shape = {}".format(elevation.ravel().shape))
-        LOG.info("data.ravel().shape = {}".format(data.ravel().shape))
+        yMin = 0. if yMin == None else yMin
+        yMax = 50000. if yMax == None else yMax
+        LOG.info("yMin,yMax = {},{}".format(yMin,yMax))
 
-        im = ax.scatter(x,y,c=z,
-                axes=ax, vmin=plotMin,vmax=plotMax, edgecolors='none',cmap=cmap)
+        z = ma.array(data.ravel(),mask=data_mask.ravel())
+        x = lat_slice.ravel()
+        y = elevation.ravel()
 
-        #xi = np.linspace(np.min(x), np.max(x),numIndexes)
-        #yi = np.linspace(np.min(y), np.max(y),numIndexes)
-        #CAO = griddata(x, y, z, xi, yi,
-                #interp='linear') 
-        #im = ax.scatter(
-                #np.broadcast_to(xi,(numIndexes,len(xi))).ravel(),
-                #np.broadcast_to(yi,(numIndexes,len(yi))).T.ravel(),
-                #c=CAO.ravel(),axes=ax, vmin=plotMin,vmax=plotMax,edgecolors='none',
-                #cmap=cmap)
+        if doScatterPlot:
+            im = ax.scatter(x,y,c=z,
+                    axes=ax, vmin=plotMin,vmax=plotMax, edgecolors='none',cmap=cmap)
+        else:
+            #xi = np.linspace(np.min(x), np.max(x),num_x_indicies)
+            xi = lat_slice[0]
+            yi = np.linspace(np.min(y), np.max(y),num_y_indicies)
+            zi = griddata(x, y, z, xi, yi, interp='nn') 
 
-        ax.set_ylim(np.min(y),50000.)
+            LOG.info("zMin,zMax = {},{}".format(np.min(zi),np.max(zi)))
+
+            #im = ax.contourf(xi, yi, zi, cmap=cmap)
+            im = ax.pcolor(xi, yi, zi, cmap=cmap)
+
+        y_label = ppl.setp(ax,ylabel='elevation [ft]')
 
     else:
-        im = ax.scatter(lat_slice.ravel(),pressure_slice.ravel(),c=data.ravel(),
-                axes=ax, vmin=plotMin,vmax=plotMax, edgecolors='none',cmap=cmap)
 
-        #yi = np.linspace(np.min(pressure_slice), np.max(pressure_slice),numIndexes)
-        #CAO = griddata(lat_slice.ravel(), pressure_slice.ravel(), data.ravel(), xi, yi,
-                #interp='linear') 
-        #im = ax.scatter(
-                #np.broadcast_to(xi,(numIndexes,len(xi))).ravel(),
-                #np.broadcast_to(yi,(numIndexes,len(yi))).T.ravel(),
-                #c=CAO.ravel(),axes=ax, vmin=plotMin,vmax=plotMax,edgecolors='none',
-                #cmap=cmap)
+        yMin = np.max(pressure_slice) if yMin == None else yMin
+        yMax = 0. if yMax == None else yMax
+        LOG.info("yMin,yMax = {},{}".format(yMin,yMax))
 
-        #ax.set_ylim(np.max(pressure),100.)
-        ax.set_ylim(np.max(pressure),np.min(pressure))
+        z = ma.array(data.ravel(),mask=data_mask.ravel())
+        x = lat_slice.ravel()
+        y = pressure_slice.ravel()
 
+        if doScatterPlot:
+            im = ax.scatter(x,y,c=z,
+                    axes=ax, vmin=plotMin,vmax=plotMax, edgecolors='none',cmap=cmap)
+            LOG.info("zMin,zMax = {},{}".format(np.min(z),np.max(z)))
+        else:
+            #xi = np.linspace(np.min(x), np.max(x),num_x_indicies)
+            xi = lat_slice[0]
+            yi = np.linspace(np.min(y), np.max(y),num_y_indicies)
+            zi = griddata(x, y, z, xi, yi, interp='nn') 
+
+            LOG.info("zMin,zMax = {},{}".format(np.min(zi),np.max(zi)))
+
+            #im = ax.contourf(xi, yi, zi, cmap=cmap)
+            im = ax.pcolor(xi, yi, zi, cmap=cmap)
+
+        y_label = ppl.setp(ax,ylabel='pressure [mb]')
+
+    ax.set_ylim(yMin,yMax)
     ax.set_xlim(np.min(lat_slice.ravel()),np.max(lat_slice.ravel()))
 
-    #if not True:
-    #if True:
-        #LOG.info("min,max lat_slice = {},{}".format(np.min(lat_slice), np.max(lat_slice)))
-        #LOG.info("min,max pressure_slice = {},{}".format(np.min(pressure_slice), np.max(pressure_slice)))
+    x_label = ppl.setp(ax,xlabel='latitude')
+    ppl.setp(x_label,fontsize=font_scale*10)
+    ppl.setp(y_label,fontsize=font_scale*10)
 
-        #yi = np.linspace(np.min(pressure_slice), np.max(pressure_slice),numIndexes)
-        #CAO = griddata(lat_slice.ravel(), pressure_slice.ravel(), data.ravel(), xi, yi,
-                #interp='linear') 
-        #LOG.info("lat_slice.ravel().shape = {}".format(lat_slice.ravel().shape))
-        #LOG.info("pressure_slice.ravel().shape = {}".format(pressure_slice.ravel().shape))
-        #LOG.info("data.ravel().shape = {}".format(data.ravel().shape))
-        #LOG.info("xi.shape = {}".format(xi.shape))
-        #LOG.info("yi.shape = {}".format(yi.shape))
-        #LOG.info("CAO.shape = {}".format(CAO.shape))
-
-        ##im = ax.scatter(
-                ##np.broadcast_to(xi,(numIndexes,len(xi))).ravel(),
-                ##np.broadcast_to(yi,(numIndexes,len(yi))).T.ravel(),
-                ##c=CAO.ravel(),axes=ax, vmin=plotMin,vmax=plotMax,edgecolors='none',
-                ##cmap=cmap)
-
-        ##ax.set_ylim(100.,np.min(pressure))
-        #ax.set_ylim(np.max(pressure),np.min(pressure))
-
-        #im = ax.imshow(CAO,axes=ax,interpolation='nearest', vmin=plotMin,vmax=plotMax,
-                #aspect='auto',cmap=cmap)
-    #else:
-        #im = ax.imshow(data,axes=ax,interpolation='nearest', vmin=plotMin,vmax=plotMax,
-                #aspect='auto',cmap=cmap)
-
+    ax.grid(True)
 
     txt = ax.set_title(title,fontsize=11,y=1.04)
 
     #ppl.setp(ax.get_xticklines(),visible=False)
     #ppl.setp(ax.get_yticklines(),visible=False)
+
     #ppl.setp(ax.get_xticklabels(), visible=False)
+    ppl.setp(ax.get_xticklabels(),fontsize=font_scale*10)
+    
     #ppl.setp(ax.get_yticklabels(), visible=False)
+    ppl.setp(ax.get_yticklabels(),fontsize=font_scale*10)
 
     # add a colorbar axis
-    cax_rect = [0.10 , 0.05, 0.78 , 0.05 ] # [left,bottom,width,height]
+    cax_rect = [0.10 , 0.04, 0.78 , 0.05 ] # [left,bottom,width,height]
     cax = fig.add_axes(cax_rect,frameon=False) # setup colorbar axes
 
     # Plot the colorbar.

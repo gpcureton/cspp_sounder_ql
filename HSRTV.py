@@ -503,7 +503,7 @@ class HSRTV():
                     missing_value = float(self.datasets[dset]['attrs']['missing_value'])
                     #LOG.info("\t\tMissing value = {}".format(missing_value))
                     data_mask = ma.masked_equal(data,missing_value).mask
-                    #LOG.info("\t\tdata_mask.shape = {}".format(data_mask.shape))
+                    LOG.info("\t\tdata_mask.shape = {}".format(data_mask.shape))
                     if data_mask.shape == ():
                         data_mask = np.zeros(data.shape,dtype='bool')
                     this_granule_mask[dset] = data_mask
