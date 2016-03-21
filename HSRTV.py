@@ -245,6 +245,7 @@ class HSRTV():
             # Get the cube indicies that correspond to the value of match_val...
             match_val = elev_0
             cube_idx = get_level_indices(self.elevation,match_val)
+            self.cube_idx = cube_idx
 
             elev_level = -9999. * np.ones(self.elevation[0].shape,dtype='float')
             elev_level[(cube_idx[1],cube_idx[2])] = self.elevation[cube_idx]
@@ -256,15 +257,25 @@ class HSRTV():
         if plot_type == 'image':
 
             LOG.info("Preparing a 'level' plot...")
-            # Determine the level closest to the required pressure
-            self.level,self.pres_0 = get_pressure_level(self.pressure,pres_0)
 
-            # Contruct a pass of the required datasets at the desired pressure.
-            self.construct_level_pass(file_list,self.level,None,None)
+            if elev_0 != None:
+                # Contruct a pass of the required datasets at the desired pressure.
+                self.construct_level_pass(file_list,None,cube_idx,None,None)
+            else:
+                # Determine the level closest to the required pressure
+                self.level,self.pres_0 = get_pressure_level(self.pressure,pres_0)
+                # Contruct a pass of the required datasets at the desired pressure.
+                self.construct_level_pass(file_list,self.level,None,None,None)
+
             LOG.debug("\n\n>>> Intermediate dataset manifest...\n")
             LOG.debug(self.print_dataset_manifest(self))
 
         elif plot_type == 'slice':
+
+            if dset_type[data_name] == 'single':
+                LOG.warn("Cannot plot a slice of the single level dataset '{}', aborting...".format(data_name))
+                sys.exit(1)
+
 
             LOG.info("Preparing a 'slice' plot...")
             self.level,self.pres_0 = None,0
@@ -274,7 +285,7 @@ class HSRTV():
 
             # Getting the full latitude and longitude
             LOG.info(">>> Reading in the lat and lon arrays...")
-            self.construct_level_pass(file_list,None,None,None)
+            self.construct_level_pass(file_list,None,None,None,None)
 
             LOG.debug("\n\n>>> Intermediate dataset manifest...\n")
             LOG.debug(self.print_dataset_manifest(self))
@@ -290,7 +301,6 @@ class HSRTV():
             for dsets in ['lat_row','lat_col','lon_row','lon_col']:
                 self.datasets[dsets] = {}
 
-            #self.col = 64 # GPC: FIXME
 
             self.datasets['lat_row']['data'] = self.datasets['lat']['data'][self.row,:]
             self.datasets['lat_col']['data'] = self.datasets['lat']['data'][:,self.col]
@@ -544,7 +554,7 @@ class HSRTV():
                 sys.exit(1)
 
 
-    def construct_level_pass(self,file_list,level,row,col):
+    def construct_level_pass(self,file_list,level,elev_idx,row,col):
         '''
         Read in each of the desired datasets. Each of the desired datasets may
         be either a "base" dataset, which is read directly from the file, or a 
@@ -1130,12 +1140,11 @@ def gphite( press, temp, wvap, z_sfc, n_levels, i_dir):
 
 
 def pressure_to_height(p, t, w, z_sfc=0.):
-    gc = 0.98
-    #gc = 1.
 
-    z_sfc = 3161.
+    gc = 0.98
+
     z1 = gphite( p, t, w, z_sfc, 101,1) * gc
-    z = z1 #* 3.28 # meters to feet
+    z = z1 * 3.28 # meters to feet
 
     return z
 

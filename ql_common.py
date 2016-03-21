@@ -46,6 +46,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
 from matplotlib.ticker import LogLocator,LogFormatter
 from matplotlib.mlab import griddata
+from scipy.interpolate import griddata as griddata_sp
 
 matplotlib.use('Agg')
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
@@ -1273,7 +1274,7 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
     return 0
 
 
-def plotSliceContinuous(lat, lon, lat_arr, lon_arr, data, data_mask,
+def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, data_mask, 
         pngName, dataset_options, plot_style_options, plot_options):
         
     # Copy the plot options to local variables
@@ -1290,6 +1291,8 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, data, data_mask,
     lonMax        = plot_options['lonMax']
     #plotMin       = plot_options['plotMin']
     #plotMax       = plot_options['plotMax']
+    yMin          = plot_options['yMin']
+    yMax          = plot_options['yMax']
     bounding_lat  = plot_options['bounding_lat']
     scale         = plot_options['scale']
     #map_res       = plot_options['map_res']
@@ -1332,7 +1335,23 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, data, data_mask,
 
     LOG.info("lat.shape = {}".format(lat.shape))
     LOG.info("lon.shape = {}".format(lon.shape))
+    LOG.info("lat_arr.shape = {}".format(lat_arr.shape))
+    LOG.info("lon_arr.shape = {}".format(lon_arr.shape))
     LOG.info("data.shape = {}".format(data.shape))
+
+    (nlevels,nrows) = data.shape
+    lat_slice = np.broadcast_to(lat,(nlevels,nrows))
+    lat_slice = ma.masked_less(lat_slice,-90.)
+    LOG.info("lat_slice.shape = {}".format(lat_slice.shape))
+
+    LOG.info("pressure.shape = {}".format(pressure.shape))
+
+    pressure_slice = np.broadcast_to(pressure,(nrows,nlevels)).T
+    LOG.info("pressure_slice = {}".format(pressure_slice))
+    LOG.info("pressure_slice.shape = {}".format(pressure_slice.shape))
+
+    LOG.info("elevation = {}".format(elevation))
+    LOG.info("elevation.shape = {}".format(elevation.shape if elevation != None else None))
 
     # If our data is all missing, return
     #data_mask = data.mask
@@ -1343,7 +1362,7 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, data, data_mask,
 
     # General Setup
     figWidth,figHeight = 10.,6.
-    ax_rect = [0.10, 0.20, 0.78, 0.69  ] # [left,bottom,width,height]
+    ax_rect = [0.10, 0.22, 0.78, 0.67  ] # [left,bottom,width,height]
 
     fig = Figure(figsize=(figWidth,figHeight))
     canvas = FigureCanvas(fig)
@@ -1357,25 +1376,120 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, data, data_mask,
     LOG.debug("plotMin = {}".format(plotMin))
     LOG.debug("plotMax = {}".format(plotMax))
 
-    #ax.set_xticklabels(np.linspace(0,10,11), axes=ax,fontsize=9)
-    #ax.set_xticks(map(str,np.linspace(0,10,11)))
-    #ax.set_yticklabels(np.linspace(0,10,11), axes=ax,fontsize=9)
+    ###########################################################################
+    # Building interpolated dataset
+    ###########################################################################
+    
+    num_x_indicies = 101
+    num_y_indicies = 101
 
-    im = ax.imshow(data,axes=ax,interpolation='nearest',vmin=plotMin,vmax=plotMax,
-            aspect='auto',cmap=cmap,extent=(0,95,20,10))
+    z = ma.array(data.ravel(),mask=data_mask.ravel())
+    x = lat_slice.ravel()
+    LOG.info("z.shape = {}".format(z.shape))
+    LOG.info("x.shape = {}".format(x.shape))
+
+    LOG.info("zMin,zMax = {},{}".format(np.min(z),np.max(z)))
+
+    if elevation != None:
+
+        yMin = 0. if yMin == None else yMin
+        yMax = 50000. if yMax == None else yMax
+        LOG.info("yMin,yMax = {},{}".format(yMin,yMax))
+
+        y = elevation.real.ravel()
+        LOG.info("y = {}".format(y))
+        LOG.info("y.shape = {}".format(y.shape))
+        LOG.info("yMin,yMax = {},{}".format(np.min(y),np.max(y)))
+
+        if doScatterPlot:
+            im = ax.scatter(x,y,c=z,
+                    axes=ax, vmin=plotMin,vmax=plotMax, edgecolors='none',cmap=cmap)
+        else:
+            points = np.vstack((x,y)).T
+
+            #xi = np.linspace(np.min(x), np.max(x),num_x_indicies)
+            xi = lat_slice[0]
+            xi.sort()
+            yi = np.linspace(np.min(y), np.max(y),num_y_indicies)
+
+            zi = griddata(x, y, z, xi, yi, interp='linear') 
+
+            #grid_x, grid_y = np.meshgrid(xi, yi)
+            #zi = griddata_sp(points, z, (grid_x, grid_y), method='linear')
+
+            zi = ma.array(zi,mask=np.isnan(zi),fill_value=-9999.)
+            zi = ma.masked_less(zi,0.)
+
+            mask_range = dataset_options['mask_ranges'] if dataset_options['mask_ranges']!=[] else [None,None]
+            zi = ma.masked_inside(zi,mask_range[0],mask_range[1])
+
+            LOG.info("zMin,zMax = {},{}".format(np.min(zi),np.max(zi)))
+
+            #im = ax.contourf(xi, yi, zi, cmap=cmap)
+            im = ax.pcolor(xi, yi, zi, vmin=plotMin,vmax=plotMax,cmap=cmap)
+
+        y_label = ppl.setp(ax,ylabel='elevation [ft]')
+
+    else:
+
+        yMin = np.max(pressure_slice) if yMin == None else yMin
+        yMax = 0. if yMax == None else yMax
+        LOG.info("yMin,yMax = {},{}".format(yMin,yMax))
+
+        y = pressure_slice.ravel()
+        LOG.info("y = {}".format(y))
+        LOG.info("y.shape = {}".format(y.shape))
+
+        LOG.info("zMin,zMax = {},{}".format(np.min(z),np.max(z)))
+
+        if doScatterPlot:
+            im = ax.scatter(x,y,c=z,
+                    axes=ax, vmin=plotMin,vmax=plotMax, edgecolors='none',cmap=cmap)
+            LOG.info("zMin,zMax = {},{}".format(np.min(z),np.max(z)))
+        else:
+            points = np.vstack((x,y)).T
+
+            #xi = np.linspace(np.min(x), np.max(x),num_x_indicies)
+            xi = lat_slice[0]
+            xi.sort()
+            yi = np.linspace(np.min(y), np.max(y),num_y_indicies)
+
+            grid_x, grid_y = np.meshgrid(xi, yi)
+            zi = griddata_sp(points, z, (grid_x, grid_y), method='linear')
+
+            zi = ma.array(zi,mask=np.isnan(zi),fill_value=-9999.)
+            zi = ma.masked_less(zi,0.)
+
+            mask_range = dataset_options['mask_ranges'] if dataset_options['mask_ranges']!=[] else [None,None]
+            zi = ma.masked_inside(zi,mask_range[0],mask_range[1])
+
+            LOG.info("zMin,zMax = {},{}".format(np.min(zi),np.max(zi)))
+            LOG.info("plotMin,plotMax = {},{}".format(plotMin,plotMax))
+
+            #im = ax.contourf(xi, yi, zi, cmap=cmap)
+            im = ax.pcolor(xi, yi, zi, vmin=plotMin,vmax=plotMax, cmap=cmap)
+
+        y_label = ppl.setp(ax,ylabel='pressure [mb]')
+
+    ax.set_ylim(yMin,yMax)
+    ax.set_xlim(np.min(lat_slice.ravel()),np.max(lat_slice.ravel()))
+
+    x_label = ppl.setp(ax,xlabel='latitude [$^{\circ}$]')
+    ppl.setp(x_label,fontsize=font_scale*10)
+    ppl.setp(y_label,fontsize=font_scale*10)
+
+    ax.grid(True)
 
     txt = ax.set_title(title,fontsize=11,y=1.04)
 
-    #ax.set_xticklabels(np.linspace(0,1,96))
-    #ax.set_yticklabels(0.,1.,axes=ax)
-    #ax.set_yticklabels(map(str,np.linspace(0,1,101)))
-    #ax.set_yticklabels(np.linspace(0,10,11), axes=ax,fontsize=9)
-    #print ax.
-
     #ppl.setp(ax.get_xticklines(),visible=False)
     #ppl.setp(ax.get_yticklines(),visible=False)
+
     #ppl.setp(ax.get_xticklabels(), visible=False)
+    ppl.setp(ax.get_xticklabels(),fontsize=font_scale*10)
+
     #ppl.setp(ax.get_yticklabels(), visible=False)
+    ppl.setp(ax.get_yticklabels(),fontsize=font_scale*10)
 
     # add a colorbar axis
     cax_rect = [0.10 , 0.05, 0.78 , 0.05 ] # [left,bottom,width,height]
@@ -1415,7 +1529,7 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, data, data_mask,
     LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat_arr),np.max(lat_arr)))
     LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon_arr),np.max(lon_arr)))
 
-    glax_rect = [0.85, 0.69, 0.18, 0.20 ] # [left,bottom,width,height]
+    glax_rect = [0.85, 0.71, 0.18, 0.18 ] # [left,bottom,width,height]
     glax = fig.add_axes(glax_rect)
 
     #m_globe = Basemap(lat_0=0.,lon_0=0.,\
@@ -1548,10 +1662,13 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
 
     (nlevels,nrows) = data.shape
     lat_slice = np.broadcast_to(lat,(nlevels,nrows))
+    lat_slice = ma.masked_less(lat_slice,-90.)
     LOG.info("lat_slice.shape = {}".format(lat_slice.shape))
+
     LOG.info("pressure.shape = {}".format(pressure.shape))
     pressure_slice = np.broadcast_to(pressure,(nrows,nlevels)).T
     LOG.info("pressure_slice.shape = {}".format(pressure_slice.shape))
+
     LOG.info("elevation = {}".format(elevation))
     LOG.info("elevation.shape = {}".format(elevation.shape if elevation != None else None))
 
@@ -1564,7 +1681,7 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
 
     # General Setup
     figWidth,figHeight = 10.,6.
-    ax_rect = [0.10, 0.20, 0.78, 0.69  ] # [left,bottom,width,height]
+    ax_rect = [0.10, 0.22, 0.78, 0.67  ] # [left,bottom,width,height]
 
     fig = Figure(figsize=(figWidth,figHeight))
     canvas = FigureCanvas(fig)
@@ -1597,8 +1714,15 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     ###########################################################################
     LOG.info("elevation = {}".format(elevation))
     
-    num_x_indicies = 100
-    num_y_indicies = 100
+    num_x_indicies = 101
+    num_y_indicies = 101
+
+    z = ma.array(data.ravel(),mask=data_mask.ravel())
+    x = lat_slice.ravel()
+    LOG.info("z.shape = {}".format(z.shape))
+    LOG.info("x.shape = {}".format(x.shape))
+
+    LOG.info("zMin,zMax = {},{}".format(np.min(z),np.max(z)))
 
     if elevation != None:
 
@@ -1606,18 +1730,32 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
         yMax = 50000. if yMax == None else yMax
         LOG.info("yMin,yMax = {},{}".format(yMin,yMax))
 
-        z = ma.array(data.ravel(),mask=data_mask.ravel())
-        x = lat_slice.ravel()
         y = elevation.ravel()
+        LOG.info("y = {}".format(y))
+        LOG.info("y.shape = {}".format(y.shape))
+        LOG.info("yMin,yMax = {},{}".format(np.min(y),np.max(y)))
 
         if doScatterPlot:
             im = ax.scatter(x,y,c=z,
                     axes=ax, vmin=plotMin,vmax=plotMax, edgecolors='none',cmap=cmap)
         else:
+            points = np.vstack((x,y)).T
+
             #xi = np.linspace(np.min(x), np.max(x),num_x_indicies)
             xi = lat_slice[0]
+            xi.sort()
             yi = np.linspace(np.min(y), np.max(y),num_y_indicies)
+
             zi = griddata(x, y, z, xi, yi, interp='nn') 
+
+            #grid_x, grid_y = np.meshgrid(xi, yi)
+            #zi = griddata_sp(points, z, (grid_x, grid_y), method='nearest')
+
+            zi = ma.array(zi,mask=np.isnan(zi),fill_value=-9999.)
+            zi = ma.masked_less(zi,0.)
+
+            mask_range = dataset_options['mask_values'] if dataset_options['mask_values']!=[] else [None,None]
+            zi = ma.masked_inside(zi,mask_range[0],mask_range[1])
 
             LOG.info("zMin,zMax = {},{}".format(np.min(zi),np.max(zi)))
 
@@ -1641,10 +1779,19 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
                     axes=ax, vmin=plotMin,vmax=plotMax, edgecolors='none',cmap=cmap)
             LOG.info("zMin,zMax = {},{}".format(np.min(z),np.max(z)))
         else:
+
+            points = np.vstack((x,y)).T
+
             #xi = np.linspace(np.min(x), np.max(x),num_x_indicies)
             xi = lat_slice[0]
+            xi.sort()
             yi = np.linspace(np.min(y), np.max(y),num_y_indicies)
-            zi = griddata(x, y, z, xi, yi, interp='nn') 
+
+            grid_x, grid_y = np.meshgrid(xi, yi)
+            zi = griddata_sp(points, z, (grid_x, grid_y), method='nearest')
+
+            zi = ma.array(zi,mask=np.isnan(zi),fill_value=-9999.)
+            zi = ma.masked_less(zi,0.)
 
             LOG.info("zMin,zMax = {},{}".format(np.min(zi),np.max(zi)))
 
@@ -1656,7 +1803,7 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     ax.set_ylim(yMin,yMax)
     ax.set_xlim(np.min(lat_slice.ravel()),np.max(lat_slice.ravel()))
 
-    x_label = ppl.setp(ax,xlabel='latitude')
+    x_label = ppl.setp(ax,xlabel='latitude [$^{\circ}$]')
     ppl.setp(x_label,fontsize=font_scale*10)
     ppl.setp(y_label,fontsize=font_scale*10)
 
@@ -1718,7 +1865,7 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat_arr),np.max(lat_arr)))
     LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon_arr),np.max(lon_arr)))
 
-    glax_rect = [0.85, 0.69, 0.18, 0.20 ] # [left,bottom,width,height]
+    glax_rect = [0.85, 0.71, 0.18, 0.18 ] # [left,bottom,width,height]
     glax = fig.add_axes(glax_rect)
 
     #m_globe = Basemap(lat_0=0.,lon_0=0.,\
@@ -1791,15 +1938,6 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
     before passing to the plotting method.
     """
 
-    #cbar_titles = {
-            #'temp':'temperature (K) @ {:4.2f} hPa'.format(pres_0),
-            #'wvap':'water vapor mixing ratio (g/kg) @ {:4.2f} hPa'.format(pres_0),
-            #'dwpt':'dewpoint temperature (K) @ {:4.2f} hPa'.format(pres_0),
-            #'relh':'relative humidity (%) @ {:4.2f} hPa'.format(pres_0),
-            #'ctp':'cloud top pressure (hPa)',
-            #'ctt':'cloud top temperature (K)'
-            #}
-
     plot_style_options = {}
     plot_style_options['stride'] = options.stride
     plot_style_options['plotMin'] = dataset_options['values'][0] if options.plotMin==None else options.plotMin
@@ -1820,11 +1958,21 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
 
     # Set the plot title
     if options.plot_title==None:
-        pres_str = "" if not dataset_options['level'] else " @ {:4.2f} hPa".format(dfile_obj.pres_0)
+        if options.plot_type == 'image':
+            if options.pressure != None:
+                vert_lev_str = "" if not dataset_options['level'] else " @ {:4.2f} hPa".format(dfile_obj.pres_0)
+            elif options.elevation != None:
+                vert_lev_str = "" if not dataset_options['level'] else " @ {:4.2f} feet".format(dfile_obj.elev_0)
+            else:
+                pass
+            
+        elif options.plot_type == 'slice':
+            vert_lev_str = "(footprint {})".format(options.footprint)
+
         plot_style_options['title'] = "{} , {} {}\n{}z".format(
                 dfile_obj.datasets['file_attrs'][filenames[0]]['Mission_Name'],
                 dataset_options['name'],
-                pres_str,
+                vert_lev_str,
                 dt_image_date.strftime('%Y-%m-%d %H:%M')
                 )
     else:

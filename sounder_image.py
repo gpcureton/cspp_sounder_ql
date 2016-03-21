@@ -679,6 +679,7 @@ def main():
         lat_col = hsrtv_obj.datasets['lat_col']['data']
         lon_col = hsrtv_obj.datasets['lon_col']['data']
         pressure = hsrtv_obj.pressure
+        options.footprint = hsrtv_obj.col
         if elevation != None:
             elevation = hsrtv_obj.datasets['elev_slice']['data']
 
@@ -707,7 +708,7 @@ def main():
 
 
     # Determine the filename
-    if dataset=='ctp' or dataset=='ctt':
+    if dataset=='ctp' or dataset=='ctt' or plot_type=='slice':
         file_suffix = "{}_{}".format(datatype,dataset)
     else:
         file_suffix = "{}_{}_{}mb".format(datatype,dataset,int(pres_0))
