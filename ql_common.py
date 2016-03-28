@@ -56,7 +56,6 @@ import matplotlib.pyplot as ppl
 
 from mpl_toolkits.basemap import Basemap
 
-from pyhdf.SD import SD
 from netCDF4 import Dataset
 from netCDF4 import num2date
 import h5py
@@ -70,44 +69,6 @@ LOG = logging.getLogger(__file__)
 def _tuple2args(parms):
     s = ' '.join( '+%s=%s' % (k,v) for (k,v) in parms )
     return s.encode('ascii')
-
-class Datafile_HDF4():
-
-    def __init__(self,input_file):
-
-
-        self.input_file = input_file
-
-        LOG.debug('Opening {} with HDF4...'.format(self.input_file))
-        self.file_obj = SD(self.input_file)
-        
-        # Dictionary of file object attributes
-        self.attrs = self.file_obj.attributes()
-
-        # Dictionary of dataset shape and type attributes
-        self.data_dict = self.file_obj.datasets()
-
-        # List of dataset names
-        self.datanames = self.data_dict.keys()
-        self.datanames.sort()
-
-
-    class Dataset():
-
-        def __init__(selfd,L1_obj,dataname):
-
-            selfd.dataname = dataname
-
-            selfd.dset_obj = L1_obj.file_obj.select(dataname)
-
-            selfd.attrs = selfd.dset_obj.attributes()
-            selfd.dset = ma.masked_equal(selfd.dset_obj.get(),selfd.attrs['_FillValue'])
-            
-            selfd.dset = selfd.dset * selfd.attrs['scale_factor'] + selfd.attrs['add_offset']
-
-    def close(self):
-        LOG.debug('Closing {}...'.format(self.input_file))
-        self.file_obj.end()
 
 
 class Datafile_NetCDF():
