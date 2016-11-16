@@ -89,7 +89,7 @@ class Datafile_NetCDF():
         self.attrs = {}
         for attr_key in self.file_obj.ncattrs():
             self.attrs[attr_key] = getattr(self.file_obj,attr_key)
-        
+
         # Ordered dictionary of dataset objects
         self.data_dict = self.file_obj.variables
 
@@ -110,7 +110,7 @@ class Datafile_NetCDF():
             selfd.attrs = {}
             for attr_key in selfd.dset_obj.ncattrs():
                 selfd.attrs[attr_key] = getattr(selfd.dset_obj,attr_key)
-            
+
             selfd.dset = ma.masked_equal(selfd.dset_obj[:],selfd.attrs['_FillValue'])
             #selfd.dset = selfd.dset * selfd.attrs['scale_factor'] + selfd.attrs['add_offset']
 
@@ -137,7 +137,7 @@ class Datafile_HDF5():
         self.attrs = {}
         for attr_key in self.file_obj.attrs.keys():
             self.attrs[attr_key] = self.file_obj.attrs[attr_key][0]
-        
+
         # Dictionary of dataset objects
         self.data_dict = {}
         for dset_obj in self.file_obj.values():
@@ -161,7 +161,7 @@ class Datafile_HDF5():
             selfd.attrs = {}
             for attr_key in selfd.dset_obj.attrs.keys():
                 selfd.attrs[attr_key] = selfd.dset_obj.attrs[attr_key][0]
-            
+
             if 'missing_value' in selfd.attrs.keys():
                 selfd.dset = ma.masked_equal(selfd.dset_obj[:],
                         float(selfd.attrs['missing_value']))
@@ -178,7 +178,7 @@ def granuleFiles(prodGlob):
     '''
     Returns sorted lists of the geolocation and product files.
     '''
-    
+
     prodDir = path.dirname(path.abspath(path.expanduser(prodGlob)))
 
     LOG.debug("Initial prodGlob = {}".format(prodGlob))
@@ -190,14 +190,14 @@ def granuleFiles(prodGlob):
 
     prodList = glob("%s/%s" % (prodDir,prodGlob))
     prodList.sort()
-    
+
     return prodList
 
 
 def get_pressure_index(pressure,pres_0,kd_dist=10.):
     '''
     Get the indices in the pressure level array closes to the desired
-    pressure. If no pressure is specified, use the closest to 850mb. 
+    pressure. If no pressure is specified, use the closest to 850mb.
     Uses kd-tree.
     '''
 
@@ -237,7 +237,7 @@ def get_pressure_index(pressure,pres_0,kd_dist=10.):
         level = [levels_masked[i] for i in a][0]
 
         LOG.debug("Level index is {}".format(level))
-        
+
         LOG.info("Retrieved pressure is {:4.2f} mb".\
                 format(pressure[level].squeeze()))
 
@@ -250,7 +250,7 @@ def get_pressure_index(pressure,pres_0,kd_dist=10.):
 
 def get_pressure_level(pressure,pres_0):
     '''
-    Calculate the closest pressure level to the desired pressure. 
+    Calculate the closest pressure level to the desired pressure.
     '''
     pressure_scope = 10.
     LOG.debug("Scope of pressure level search is {} hPa".format(pressure_scope))
@@ -266,7 +266,7 @@ def get_pressure_level(pressure,pres_0):
 
     if level==None:
         raise Exception("No suitable pressure level found, aborting...")
-         
+
     LOG.debug("Retrieved level = {}".format(level))
 
     LOG.debug("Retrieved pressure = {}".format(pressure[level]))
@@ -277,7 +277,7 @@ def get_pressure_level(pressure,pres_0):
 def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
     '''
     Get the indices in the lat and lon arrays closes to the desired
-    latitude and longitude. If no lat and lon are specified, try to select 
+    latitude and longitude. If no lat and lon are specified, try to select
     the central indices. Uses kd-tree.
     '''
 
@@ -335,7 +335,7 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
 
         LOG.debug("Row index is {}".format(row))
         LOG.debug("Col index is {}".format(col))
-        
+
         lat_0 = lat[row,col].squeeze()
         lon_0 = lon[row,col].squeeze()
 
@@ -488,7 +488,7 @@ def set_plot_navigation_bm(lats,lons,dfile_obj, options):
         LOG.info("This image is NOT full disk")
 
         # Get the north, south, east and west edges of the plot region (in map
-        # coordinates). Check that the edge isnn't all missing, and step towards 
+        # coordinates). Check that the edge isnn't all missing, and step towards
         # center as necessary.
 
         # Western edge
@@ -501,7 +501,7 @@ def set_plot_navigation_bm(lats,lons,dfile_obj, options):
             if (len(x_compressed) == 0):
                 LOG.debug("No Disk! ({})".format(we_col))
                 we_col = we_col + 1
-            else : 
+            else :
                 LOG.debug("Checking complete: we_col = {}".format(we_col))
                 break
 
@@ -518,7 +518,7 @@ def set_plot_navigation_bm(lats,lons,dfile_obj, options):
             if (len(x_compressed) == 0):
                 LOG.debug("No Disk! ({})".format(ee_col))
                 ee_col = ee_col - 1
-            else : 
+            else :
                 LOG.debug("Checking complete: ee_col = {}".format(ee_col))
                 break
 
@@ -534,7 +534,7 @@ def set_plot_navigation_bm(lats,lons,dfile_obj, options):
             if (len(y_compressed) == 0):
                 LOG.debug("No Disk! ({})".format(ne_row))
                 ne_row = ne_row + 1
-            else : 
+            else :
                 LOG.debug("Checking complete: ne_row = {}".format(ne_row))
                 break
 
@@ -550,7 +550,7 @@ def set_plot_navigation_bm(lats,lons,dfile_obj, options):
             if (len(y_compressed) == 0):
                 LOG.debug("No Disk! ({})".format(se_row))
                 se_row = se_row - 1
-            else : 
+            else :
                 LOG.debug("Checking complete: se_row = {}".format(se_row))
                 break
 
@@ -590,9 +590,9 @@ def set_plot_navigation_bm(lats,lons,dfile_obj, options):
 
 
     plot_nav_options['llcrnrx'] = plot_nav_options['llcrnrx_map'] if options.viewport is None else options.viewport[0] * plot_nav_options['extent_x']
-    plot_nav_options['llcrnry'] = plot_nav_options['llcrnry_map'] if options.viewport is None else options.viewport[1] * plot_nav_options['extent_y'] 
-    plot_nav_options['urcrnrx'] = plot_nav_options['urcrnrx_map'] if options.viewport is None else options.viewport[2] * plot_nav_options['extent_x'] 
-    plot_nav_options['urcrnry'] = plot_nav_options['urcrnry_map'] if options.viewport is None else options.viewport[3] * plot_nav_options['extent_y'] 
+    plot_nav_options['llcrnry'] = plot_nav_options['llcrnry_map'] if options.viewport is None else options.viewport[1] * plot_nav_options['extent_y']
+    plot_nav_options['urcrnrx'] = plot_nav_options['urcrnrx_map'] if options.viewport is None else options.viewport[2] * plot_nav_options['extent_x']
+    plot_nav_options['urcrnry'] = plot_nav_options['urcrnry_map'] if options.viewport is None else options.viewport[3] * plot_nav_options['extent_y']
 
     plot_nav_options['lon_0'] = subsatellite_longitude
     plot_nav_options['is_full_disk'] = is_full_disk
@@ -654,7 +654,7 @@ def plotData(data,data_mask,units,pngName,stride=1,dpi=200):
 
 def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
         dataset_options, plot_style_options, plot_options):
-        
+
     # Copy the plot options to local variables
     #title         = plot_options['title']
     #cbar_title    = plot_options['cbar_title']
@@ -715,10 +715,10 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
                 format(cbar_title))
         return -1
 
-    # Determine if this is a global projection, so we can avoid having the 
+    # Determine if this is a global projection, so we can avoid having the
     # global "outset" plot.
     global_plot = False
-    if (proj=='moll' 
+    if (proj=='moll'
             or proj=='hammer'
             or proj=='robin'
             or proj=='eck4'
@@ -733,7 +733,7 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
             or proj=='vandg'):
         global_plot = True
 
-    # Determine if this is a "rectangular" projection, so we can set sensible 
+    # Determine if this is a "rectangular" projection, so we can set sensible
     # latitude limits.
     rect_plot = False
     if (proj=='cyl'
@@ -750,36 +750,37 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
         boundinglat = None
 
     if (proj=='npstere' and bounding_lat<-30.):
-        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat) 
+        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat)
          of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
         bounding_lat = -30.
 
     if (proj=='spstere' and bounding_lat>30.):
-        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat) 
+        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat)
          of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
         bounding_lat = 30.
 
     if (proj=='npaeqd' and bounding_lat<-30.):
-        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat)
          of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
         bounding_lat = -30.
 
     if (proj=='spaeqd' and bounding_lat>30.):
-        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat)
          of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
         bounding_lat = 30.
 
     if (proj=='nplaea' and bounding_lat<=0.):
-        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat)
          of {} degrees must be in northern hemisphere, setting to +1 degrees latitude.""".format(bounding_lat))
         bounding_lat = 1.
 
     if (proj=='splaea' and bounding_lat>=0.):
-        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat)
          of {} degrees must be in southern hemisphere, setting to -1 degrees latitude.""".format(bounding_lat))
         bounding_lat = -1.
 
     # Compute the central lat and lon if they are not specified
+    LOG.info("Initial lat_0,lon_0 : ({},{})".format(lat_0, lon_0))
     if (lat_0==None) or (lon_0==None):
         geo_shape = lat.shape
         nrows, ncols = geo_shape[0],geo_shape[1]
@@ -787,10 +788,26 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
         # Non lat/lon pair given, use the central unmasked values.
         row_idx = int(nrows/2.)
         col_idx = int(ncols/2.)
-        lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
-        lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
-        LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
-                format(lat_0,lon_0))
+
+        # Sometimes the geolocation corners are missing, which makes it difficult to determine the
+        # proper granule extent.
+        if lat_0 == None:
+            if ma.is_masked(lat[row_idx,col_idx]):
+                lat_0 = (np.max(lat) + np.min(lat)) / 2.
+            else:
+                lat_0 = lat[row_idx,col_idx]
+        if lon_0 == None:
+            if ma.is_masked(lon[row_idx,col_idx]):
+                lon_0 = (np.max(lon) + np.min(lon)) / 2.
+            else:
+                lon_0 = lon[row_idx,col_idx]
+
+        # lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
+        # lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
+        # LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".format(lat_0, lon_0))
+        LOG.info("Incomplete lat/lon pair given, using ({},{})".format(lat_0,lon_0))
+
+    # sys.exit(0)
 
     LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat),np.max(lat)))
     LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon),np.max(lon)))
@@ -859,9 +876,9 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
     m.drawcoastlines(linewidth = 0.5)
     m.drawcountries(linewidth = 0.5)
     m.fillcontinents(color='0.85',zorder=0)
-    m.drawparallels(np.arange( -90, 91,30), color = '0.25', 
+    m.drawparallels(np.arange( -90, 91,30), color = '0.25',
             linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
-    m.drawmeridians(np.arange(-180,180,30), color = '0.25', 
+    m.drawmeridians(np.arange(-180,180,30), color = '0.25',
             linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
 
     LOG.info("data.shape = {}".format(data.shape))
@@ -933,7 +950,7 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
 
 def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
         dataset_options, plot_style_options, plot_options):
-        
+
     # Copy the plot options to local variables
     #title         = plot_options['title']
     #cbar_title    = plot_options['cbar_title']
@@ -994,10 +1011,10 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
                 format(cbar_title))
         return -1
 
-    # Determine if this is a global projection, so we can avoid having the 
+    # Determine if this is a global projection, so we can avoid having the
     # global "outset" plot.
     global_plot = False
-    if (proj=='moll' 
+    if (proj=='moll'
             or proj=='hammer'
             or proj=='robin'
             or proj=='eck4'
@@ -1012,7 +1029,7 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
             or proj=='vandg'):
         global_plot = True
 
-    # Determine if this is a "rectangular" projection, so we can set sensible 
+    # Determine if this is a "rectangular" projection, so we can set sensible
     # latitude limits.
     rect_plot = False
     if (proj=='cyl'
@@ -1029,32 +1046,32 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
         boundinglat = None
 
     if (proj=='npstere' and bounding_lat<-30.):
-        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat) 
+        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat)
          of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
         bounding_lat = -30.
 
     if (proj=='spstere' and bounding_lat>30.):
-        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat) 
+        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat)
          of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
         bounding_lat = 30.
 
     if (proj=='npaeqd' and bounding_lat<-30.):
-        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat)
          of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
         bounding_lat = -30.
 
     if (proj=='spaeqd' and bounding_lat>30.):
-        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat)
          of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
         bounding_lat = 30.
 
     if (proj=='nplaea' and bounding_lat<=0.):
-        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat)
          of {} degrees must be in northern hemisphere, setting to +1 degrees latitude.""".format(bounding_lat))
         bounding_lat = 1.
 
     if (proj=='splaea' and bounding_lat>=0.):
-        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat)
          of {} degrees must be in southern hemisphere, setting to -1 degrees latitude.""".format(bounding_lat))
         bounding_lat = -1.
 
@@ -1152,9 +1169,9 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
     m.drawcoastlines(linewidth = 0.5)
     m.drawcountries(linewidth = 0.5)
     m.fillcontinents(color='0.85',zorder=0)
-    m.drawparallels(np.arange( -90, 91,30), color = '0.25', 
+    m.drawparallels(np.arange( -90, 91,30), color = '0.25',
             linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
-    m.drawmeridians(np.arange(-180,180,30), color = '0.25', 
+    m.drawmeridians(np.arange(-180,180,30), color = '0.25',
             linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
 
     data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
@@ -1235,9 +1252,9 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
     return 0
 
 
-def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, data_mask, 
+def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, data_mask,
         pngName, dataset_options, plot_style_options, plot_options):
-        
+
     # Copy the plot options to local variables
     #title         = plot_options['title']
     #cbar_title    = plot_options['cbar_title']
@@ -1340,7 +1357,7 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
     ###########################################################################
     # Building interpolated dataset
     ###########################################################################
-    
+
     num_x_indicies = 101
     num_y_indicies = 101
 
@@ -1373,7 +1390,7 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
             xi.sort()
             yi = np.linspace(np.min(y), np.max(y),num_y_indicies)
 
-            zi = griddata(x, y, z, xi, yi, interp='linear') 
+            zi = griddata(x, y, z, xi, yi, interp='linear')
 
             #grid_x, grid_y = np.meshgrid(xi, yi)
             #zi = griddata_sp(points, z, (grid_x, grid_y), method='linear')
@@ -1558,7 +1575,7 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
 
 def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, data_mask,
         pngName, dataset_options, plot_style_options, plot_options):
-        
+
     # Copy the plot options to local variables
     #title         = plot_options['title']
     #cbar_title    = plot_options['cbar_title']
@@ -1674,7 +1691,7 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     # Building interpolated dataset
     ###########################################################################
     LOG.info("elevation = {}".format(elevation))
-    
+
     num_x_indicies = 101
     num_y_indicies = 101
 
@@ -1707,7 +1724,7 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
             xi.sort()
             yi = np.linspace(np.min(y), np.max(y),num_y_indicies)
 
-            zi = griddata(x, y, z, xi, yi, interp='nn') 
+            zi = griddata(x, y, z, xi, yi, interp='nn')
 
             #grid_x, grid_y = np.meshgrid(xi, yi)
             #zi = griddata_sp(points, z, (grid_x, grid_y), method='nearest')
@@ -1777,7 +1794,7 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
 
     #ppl.setp(ax.get_xticklabels(), visible=False)
     ppl.setp(ax.get_xticklabels(),fontsize=font_scale*10)
-    
+
     #ppl.setp(ax.get_yticklabels(), visible=False)
     ppl.setp(ax.get_yticklabels(),fontsize=font_scale*10)
 
@@ -1926,7 +1943,7 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
                 vert_lev_str = "" if not dataset_options['level'] else " @ {:4.2f} feet".format(dfile_obj.elev_0)
             else:
                 pass
-            
+
         elif options.plot_type == 'slice':
             vert_lev_str = "(footprint {})".format(options.footprint)
 
@@ -1998,7 +2015,7 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
 
     plot_style_options['plotLims'] = [plot_style_options['plotMin'],plot_style_options['plotMax']]
 
-    # If this is a navigated plot, set which axes parallels and meridians get 
+    # If this is a navigated plot, set which axes parallels and meridians get
     # labeled at...
     #if plot_nav_options != {}:
         #if plot_nav_options['is_full_disk']:
@@ -2160,7 +2177,7 @@ def plot_map_continuous(lat,lon,data,png_file,
             data_mask = np.ones(data.shape,dtype='bool')
         else:
             data_mask = data.mask
-    else: 
+    else:
         data_mask = np.zeros(data.shape,dtype='bool')
 
     # If our data is all missing, return
@@ -2169,10 +2186,10 @@ def plot_map_continuous(lat,lon,data,png_file,
                 format(cbar_title))
         return -1
 
-    # Determine if this is a global projection, so we can avoid having the 
+    # Determine if this is a global projection, so we can avoid having the
     # global "outset" plot.
     global_plot = False
-    if (proj=='moll' 
+    if (proj=='moll'
             or proj=='hammer'
             or proj=='robin'
             or proj=='eck4'
@@ -2187,7 +2204,7 @@ def plot_map_continuous(lat,lon,data,png_file,
             or proj=='vandg'):
         global_plot = True
 
-    # Determine if this is a "rectangular" projection, so we can set sensible 
+    # Determine if this is a "rectangular" projection, so we can set sensible
     # latitude limits.
     rect_plot = False
     if (proj=='cyl'
@@ -2204,32 +2221,32 @@ def plot_map_continuous(lat,lon,data,png_file,
         boundinglat = None
 
     if (proj=='npstere' and bounding_lat<-30.):
-        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat) 
+        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat)
          of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
         bounding_lat = -30.
 
     if (proj=='spstere' and bounding_lat>30.):
-        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat) 
+        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat)
          of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
         bounding_lat = 30.
 
     if (proj=='npaeqd' and bounding_lat<-30.):
-        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat)
          of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
         bounding_lat = -30.
 
     if (proj=='spaeqd' and bounding_lat>30.):
-        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat)
          of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
         bounding_lat = 30.
 
     if (proj=='nplaea' and bounding_lat<=0.):
-        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat)
          of {} degrees must be in northern hemisphere, setting to +1 degrees latitude.""".format(bounding_lat))
         bounding_lat = 1.
 
     if (proj=='splaea' and bounding_lat>=0.):
-        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat)
          of {} degrees must be in southern hemisphere, setting to -1 degrees latitude.""".format(bounding_lat))
         bounding_lat = -1.
 
@@ -2341,9 +2358,9 @@ def plot_map_continuous(lat,lon,data,png_file,
     m.drawstates(ax=ax,color=country_color,linewidth = 0.2)
     m.fillcontinents(color='0.',zorder=0)
 
-    drawparallels(m,np.arange( -90, 91,30), color = meridian_color, 
+    drawparallels(m,np.arange( -90, 91,30), color = meridian_color,
             linewidth = 0.5,fontsize=font_scale*6,labels=parallel_axes) # left, right, top or bottom
-    drawmeridians(m,np.arange(-180,180,30), color = meridian_color, 
+    drawmeridians(m,np.arange(-180,180,30), color = meridian_color,
             linewidth = 0.5,fontsize=font_scale*6,labels=meridian_axes) # left, right, top or bottom
 
     LOG.debug('data.shape = {}'.format(data.shape))
@@ -2513,7 +2530,7 @@ def plot_image_discrete(data,data_mask,png_file,
 
 def plot_map_discrete(lat,lon,data,data_mask,png_file,
         dataset_options,plot_nav_options,plot_style_options):
-        
+
     # Copy the plot options to local variables
     llcrnrx        = plot_nav_options['llcrnrx']
     llcrnry        = plot_nav_options['llcrnry']
@@ -2607,9 +2624,9 @@ def plot_map_discrete(lat,lon,data,data_mask,png_file,
     m.drawstates(ax=ax,color=country_color,linewidth = 0.2)
     m.fillcontinents(color='0.',zorder=0)
 
-    drawparallels(m,np.arange( -90, 91,30), color = meridian_color, 
+    drawparallels(m,np.arange( -90, 91,30), color = meridian_color,
             linewidth = 0.5,fontsize=font_scale*6,labels=parallel_axes) # left, right, top or bottom
-    drawmeridians(m,np.arange(-180,180,30), color = meridian_color, 
+    drawmeridians(m,np.arange(-180,180,30), color = meridian_color,
             linewidth = 0.5,fontsize=font_scale*6,labels=meridian_axes) # left, right, top or bottom
 
     LOG.debug('data.shape = {}'.format(data.shape))

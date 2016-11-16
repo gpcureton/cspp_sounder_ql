@@ -4,14 +4,14 @@
 sounder_image.py
 
 Purpose: Create a plot of temperature, dewpoint or relative humidity,
-         at a particular pressure level. Supports outputs from the following 
+         at a particular pressure level. Supports outputs from the following
          packages...
-         
+
          * International ATOVS Processing Package (IAPP)
          * Microwave Integrated Retrieval System (MIRS)
          * CSPP Hyperspectral Retrieval (HSRTV) Package
          * NOAA Unique CrIS/ATMS Product System (NUCAPS)
-         
+
 
 Preconditions:
     * matplotlib (with basemap)
@@ -19,7 +19,7 @@ Preconditions:
     * h5py python module
 
 Optional:
-    * 
+    *
 
 Minimum commandline:
 
@@ -27,7 +27,7 @@ Minimum commandline:
 
 where...
 
-    INPUTFILES: The fully qualified path to the input files. May be a 
+    INPUTFILES: The fully qualified path to the input files. May be a
     file glob.
 
     DATATYPE: One of 'IAPP','MIRS', 'HSRTV' or 'NUCAPS'.
@@ -50,25 +50,19 @@ Copyright (c) 2014 University of Wisconsin Regents. All rights reserved.
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-file_Date = '$Date: 2015-02-11 22:59:24 -0800 (Wed, 11 Feb 2015) $'
-file_Revision = '$Revision: 2354 $'
-file_Author = '$Author: geoffc $'
-file_HeadURL = '$HeadURL: https://svn.ssec.wisc.edu/repos/jpss_adl/trunk/scripts/iapp/quicklooks/sounder_image.py $'
-file_Id = '$Id: sounder_image.py 2354 2015-02-12 06:59:24Z geoffc $'
-
-__author__ = 'Geoff Cureton <geoff.cureton@ssec.wisc.edu>'
-__version__ = '$Id: sounder_image.py 2354 2015-02-12 06:59:24Z geoffc $'
-__docformat__ = 'Epytext'
-
-import os, sys, logging, traceback
-from os import path,uname,environ
+import os
+import sys
+import logging
+import traceback
 import string
 import re
 import uuid
-from shutil import rmtree,copyfile
+from shutil import rmtree, copyfile
 from glob import glob
 from time import time
-from datetime import datetime,timedelta
+from datetime import datetime, timedelta
+
+import log_common
 
 import numpy as np
 from numpy import ma
@@ -99,7 +93,7 @@ import sounder_image_data
 from thermo import dewhum
 from ql_common import granuleFiles
 #from ql_common import get_pressure_index
-from ql_common import plotMapDataContinuous,plotMapDataDiscrete
+from ql_common import plotMapDataContinuous, plotMapDataDiscrete
 from ql_common import set_plot_styles
 from ql_common import set_plot_navigation_bm as set_plot_navigation
 
@@ -213,12 +207,12 @@ def _argparse():
 
 
 
-    description = '''Create a plot of temperature, dewpoint or something 
-                     else at a particular pressure or elevation level. Supports IAPP, MIRS, HSRTV 
+    description = '''Create a plot of temperature, dewpoint or something
+                     else at a particular pressure or elevation level. Supports IAPP, MIRS, HSRTV
                      and NUCAPS files.'''
 
     usage = "usage: %prog [mandatory args] [options]"
-    version = __version__
+    version = "v1.0"
 
     parser = argparse.ArgumentParser(
                                      #version=version,
@@ -226,12 +220,12 @@ def _argparse():
                                      )
 
     # Mandatory/positional arguments
-    
+
     parser.add_argument(
                       action='store',
                       dest='input_file',
                       type=str,
-                      help='''The fully qualified path to the input file(s). May 
+                      help='''The fully qualified path to the input file(s). May
                               be a file glob (which should be in quotes).'''
                       )
 
@@ -247,7 +241,7 @@ def _argparse():
                            '''.format(dataChoices.__str__()[1:-1])
                       )
 
-    # Optional arguments 
+    # Optional arguments
 
     parser.add_argument('--dset',
                       action="store",
@@ -268,7 +262,7 @@ def _argparse():
                       dest="stride",
                       default=defaults["stride"],
                       type=int,
-                      help='''Sample every STRIDE pixels in the band data. 
+                      help='''Sample every STRIDE pixels in the band data.
                       [default: {}]'''.format(defaults["stride"])
                       )
 
@@ -277,7 +271,7 @@ def _argparse():
                       dest="pressure",
                       default=defaults["pressure"],
                       type=float,
-                      help='''The pressure level (in mbar) to plot [default: {}]. 
+                      help='''The pressure level (in mbar) to plot [default: {}].
                       Mutually exclusive with --elevation.'''.format(defaults["pressure"])
                       )
 
@@ -311,8 +305,8 @@ def _argparse():
                       dest="dpi",
                       default='200.',
                       type=float,
-                      help='''The resolution in dots per inch of the output 
-                      png file. 
+                      help='''The resolution in dots per inch of the output
+                      png file.
                       [default: {}]'''.format(defaults["dpi"])
                       )
 
@@ -376,7 +370,7 @@ def _argparse():
                       action="store",
                       dest="footprint",
                       type=int,
-                      help='''The cross-track footprint to use when plotting a 
+                      help='''The cross-track footprint to use when plotting a
                       profile slice.'''
                       )
 
@@ -385,7 +379,7 @@ def _argparse():
                       dest="bounding_lat",
                       default=defaults["bounding_lat"],
                       type=float,
-                      help='''The minimum/maximum latitude to plot for the polar projections. 
+                      help='''The minimum/maximum latitude to plot for the polar projections.
                       [default: {}]'''.format(defaults["bounding_lat"])
                       )
 
@@ -395,8 +389,8 @@ def _argparse():
                       type=float,
                       nargs=4,
                       metavar=('LLCRNRX', 'LLCRNRY', 'URCRNRX', 'URCRNRY'),
-                      help="""Lower-left and upper-right coordinates 
-                      [*llcrnrx*, *llcrnry*, *urcrnrx*, *urcrnry*] of the projection 
+                      help="""Lower-left and upper-right coordinates
+                      [*llcrnrx*, *llcrnry*, *urcrnrx*, *urcrnry*] of the projection
                       viewport, in the range [-0.5,+0.5] (for navigated plots only)"""
                       )
 
@@ -418,8 +412,8 @@ def _argparse():
                       type=float,
                       nargs=4,
                       metavar=('LEFT', 'BOTTOM', 'WIDTH', 'HEIGHT'),
-                      help="""Set the map axes at position [*left*, *bottom*, *width*, *height*] 
-                      where all quantities are in fractions of figure width and height. 
+                      help="""Set the map axes at position [*left*, *bottom*, *width*, *height*]
+                      where all quantities are in fractions of figure width and height.
                       [default: '{}']""".format(defaults["map_axis"])
                       )
 
@@ -430,8 +424,8 @@ def _argparse():
                       type=float,
                       nargs=4,
                       metavar=('LEFT', 'BOTTOM', 'WIDTH', 'HEIGHT'),
-                      help="""Set the colorbar axes at position [*left*, *bottom*, *width*, *height*] 
-                      where all quantities are in fractions of figure width and height. 
+                      help="""Set the colorbar axes at position [*left*, *bottom*, *width*, *height*]
+                      where all quantities are in fractions of figure width and height.
                       [default: '{}']""".format(defaults["cbar_axis"])
                       )
 
@@ -459,7 +453,7 @@ def _argparse():
                       dest="pointSize",
                       default=defaults["pointSize"],
                       type=float,
-                      help='''Size of the plot point used to represent each pixel. 
+                      help='''Size of the plot point used to represent each pixel.
                       [default: {}]'''.format(defaults["pointSize"])
                       )
 
@@ -477,7 +471,7 @@ def _argparse():
                       dest="cmap",
                       default=defaults["cmap"],
                       type=str,
-                      help="""The matplotlib colormap to use. 
+                      help="""The matplotlib colormap to use.
                       [default: '{}']""".format(defaults["cmap"])
                       )
 
@@ -512,8 +506,8 @@ def _argparse():
                       dest="scale",
                       default=defaults["scale"],
                       type=float,
-                      help='''The scaling factor for the default viewport size 
-                      of (w x h) = (4200000.0 x 4500000.0) meters. 
+                      help='''The scaling factor for the default viewport size
+                      of (w x h) = (4200000.0 x 4500000.0) meters.
                       [default: {}]'''.format(defaults["pointSize"])
                       )
 
@@ -523,8 +517,8 @@ def _argparse():
                       default=defaults["map_res"],
                       type=str,
                       choices=map_res_choice,
-                      help="""The map coastline resolution. Possible values are 
-                      'c' (coarse),'l' (low) and 'i' (intermediate). 
+                      help="""The map coastline resolution. Possible values are
+                      'c' (coarse),'l' (low) and 'i' (intermediate).
                       [default: '{}']""".format(defaults["map_res"])
                       )
 
@@ -534,7 +528,7 @@ def _argparse():
                       default=defaults["proj"],
                       type=str,
                       choices=map_proj_choice,
-                      help='''The map projection. Possible values are 
+                      help='''The map projection. Possible values are
                       {{{}}}. [default: '{}']'''.format(
                           "".join(["'{0:8s} ({1}), ".format(tups[0]+"'",tups[1]) for tups in zip(map_proj_choice.keys(),map_proj_choice.values())]),
                           defaults["proj"]
@@ -546,7 +540,7 @@ def _argparse():
                       dest="output_file",
                       default=defaults["output_file"],
                       type=str,
-                      help='''The filename of the output png file. 
+                      help='''The filename of the output png file.
                       '''
                       )
 
@@ -555,16 +549,16 @@ def _argparse():
                       dest="outputFilePrefix",
                       default=defaults["outputFilePrefix"],
                       type=str,
-                      help="""String to prefix to the automatically generated 
-                      png name. 
+                      help="""String to prefix to the automatically generated
+                      png name.
                       [default: {}]""".format(defaults["outputFilePrefix"])
                       )
 
     parser.add_argument("-v", "--verbose",
                       dest='verbosity',
-                      action="count", 
+                      action="count",
                       default=2,
-                      help='''each occurrence increases verbosity 1 level from 
+                      help='''each occurrence increases verbosity 1 level from
                       INFO. -v=DEBUG'''
                       )
 
@@ -588,22 +582,10 @@ def _argparse():
     elif args.pressure==None and args.elevation==None:
         args.pressure = 850.
 
-
     # Set up the logging
-    verbosity = 0 if args.quiet else args.verbosity
     levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
-    level = levels[min(verbosity,3)]
-
-    if level == logging.DEBUG :
-        console_logFormat = '%(asctime)s.%(msecs)03d (%(levelname)s) : %(filename)s : %(funcName)s : %(lineno)d:%(message)s'
-        dateFormat='%Y-%m-%d %H:%M:%S'
-    else:
-        console_logFormat = '%(asctime)s.%(msecs)03d (%(levelname)s) : %(message)s'
-        dateFormat='%Y-%m-%d %H:%M:%S'
-
-    logging.basicConfig(level = level, 
-            format = console_logFormat, 
-            datefmt = dateFormat)
+    level = levels[args.verbosity if args.verbosity < 4 else 3]
+    log_common.configure_logging(level)
 
     return args
 
@@ -662,7 +644,7 @@ def main():
 
     LOG.info("Input pressure = {}".format(pressure))
     LOG.info("Input elevation = {}".format(elevation))
-    
+
     #sys.exit(0)
 
     hsrtv_obj = HSRTV.HSRTV(input_file_list,dataset,plot_type,
@@ -688,7 +670,7 @@ def main():
     LOG.debug(hsrtv_obj.datasets['file_attrs'].items())
 
 
-    input_file = path.basename(input_file_list[0])
+    input_file = os.path.basename(input_file_list[0])
 
     #print 'temp = np.array({})'.format(hsrtv_obj.datasets['temp']['data'][:,0])
     #print 'wvap = np.array({})'.format(hsrtv_obj.datasets['wvap']['data'][:,0])
@@ -724,13 +706,12 @@ def main():
 
     dataset = options.dataset
 
-    # Set the navigation 
+    # Set the navigation
     plot_nav_options = set_plot_navigation(lats,lons,hsrtv_obj,options)
     for key in plot_nav_options.keys():
         LOG.info("plot_nav_options['{}'] = {}".format(key,plot_nav_options[key]))
 
-
-    # Set the plot styles 
+    # Set the plot styles
     plot_style_options = set_plot_styles(hsrtv_obj,dataset,dataset_options,options)
 
     # Get pointers to the desired plotting routines
@@ -769,7 +750,7 @@ def main():
 
     # Create the plot
     if plot_type == 'image':
-        retval = plot_map(lats, lons, data, data_mask, 
+        retval = plot_map(lats, lons, data, data_mask,
                 output_file, dataset_options, plot_style_options,plot_options)
     if plot_type == 'slice':
         retval = plot_slice(lat_col, lon_col, lats, lons, pressure, elevation,
@@ -780,4 +761,4 @@ def main():
 
 
 if __name__=='__main__':
-    sys.exit(main())  
+    sys.exit(main())

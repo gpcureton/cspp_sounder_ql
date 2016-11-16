@@ -19,7 +19,8 @@ export DPE_VER=CSPP_SOUNDER_QL_1_0
 #
 
 # python interpreter including numpy, h5py, pytables, scipy; used by CSPP scripts
-export PY=${CSPP_SOUNDER_QL_HOME}/common/ShellB3/bin/python
+#export PY=${CSPP_SOUNDER_QL_HOME}/common/ShellB3/bin/python
+export PY=${CSPP_SOUNDER_QL_HOME}/common/shellb3-v1.1-2.7/ShellB3/bin/python
 
 # common modules location used by CSPP scripts
 export PYTHONPATH=$CSPP_SOUNDER_QL_HOME/common:${CSPP_SOUNDER_QL_HOME}/scripts

@@ -3,9 +3,9 @@
 """
 sounder_skewt.py
 
-Purpose: Create a Skew-T plot from a range of input data. Supports outputs from 
+Purpose: Create a Skew-T plot from a range of input data. Supports outputs from
          the following packages...
-         
+
          * International ATOVS Processing Package (IAPP)
          * Microwave Integrated Retrieval System (MIRS)
          * CSPP Hyperspectral Retrieval (HSRTV) Package
@@ -17,7 +17,7 @@ Preconditions:
     * h5py python module
 
 Optional:
-    * 
+    *
 
 Minimum commandline:
 
@@ -25,7 +25,7 @@ Minimum commandline:
 
 where...
 
-    INPUTFILES: The fully qualified path to the input files. May be a 
+    INPUTFILES: The fully qualified path to the input files. May be a
     directory or a file glob.
 
     DATATYPE: One of 'IAPP','MIRS', 'HSRTV' or 'NUCAPS'.
@@ -48,25 +48,19 @@ Copyright (c) 2014 University of Wisconsin Regents. All rights reserved.
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-file_Date = '$Date: 2015-02-11 22:59:24 -0800 (Wed, 11 Feb 2015) $'
-file_Revision = '$Revision: 2354 $'
-file_Author = '$Author: geoffc $'
-file_HeadURL = '$HeadURL: https://svn.ssec.wisc.edu/repos/jpss_adl/trunk/scripts/iapp/quicklooks/sounder_skewt.py $'
-file_Id = '$Id: sounder_skewt.py 2354 2015-02-12 06:59:24Z geoffc $'
-
-__author__ = 'Geoff Cureton <geoff.cureton@ssec.wisc.edu>'
-__version__ = '$Id: sounder_skewt.py 2354 2015-02-12 06:59:24Z geoffc $'
-__docformat__ = 'Epytext'
-
-import os, sys, logging, traceback
-from os import path,uname,environ
+import os
+import sys
+import logging
+import traceback
 import string
 import re
 import uuid
-from shutil import rmtree,copyfile
+from shutil import rmtree, copyfile
 from glob import glob
 from time import time
-from datetime import datetime,timedelta
+from datetime import datetime, timedelta
+
+import log_common
 
 import numpy as np
 from numpy import ma
@@ -129,26 +123,26 @@ def granuleFiles(prodGlob):
     '''
     Returns sorted lists of the geolocation and product files.
     '''
-    
-    prodDir = path.dirname(path.abspath(path.expanduser(prodGlob)))
+
+    prodDir = os.path.dirname(os.path.abspath(os.path.expanduser(prodGlob)))
 
     LOG.debug("Initial prodGlob = {}".format(prodGlob))
 
-    prodGlob = path.basename(path.abspath(path.expanduser(prodGlob)))
+    prodGlob = os.path.basename(os.path.abspath(os.path.expanduser(prodGlob)))
 
     LOG.debug("prodDir = {}".format(prodDir))
     LOG.debug("prodGlob = {}".format(prodGlob))
 
     prodList = glob("%s/%s" % (prodDir,prodGlob))
     prodList.sort()
-    
+
     return prodList
 
 
 def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
     '''
     Get the indices in the lat and lon arrays closes to the desired
-    latitude and longitude. If no lat and lon are specified, try to select 
+    latitude and longitude. If no lat and lon are specified, try to select
     the central indices. Uses kd-tree.
     '''
 
@@ -205,7 +199,7 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
 
         LOG.debug("Row index is {}".format(row))
         LOG.debug("Col index is {}".format(col))
-        
+
         LOG.debug("Retrieved latitude is {:4.2f}".format(lat[row,col].squeeze()))
         LOG.debug("Retrieved longitude is {:4.2f}".format(lon[row,col].squeeze()))
 
@@ -239,24 +233,24 @@ def iapp_sounder(iapp_file_list,lat_0=None,lon_0=None):
             Longitude:units = "degrees_east" ;
 
     float Pressure_Levels(Pres_Levels) ;
-            Pressure_Levels:long_name = "Pressure Levels at which the retrieved 
+            Pressure_Levels:long_name = "Pressure Levels at which the retrieved
                                          values are calculated" ;
             Pressure_Levels:units = "hPa" ;
 
     float Temperature_Retrieval(Along_Track, Across_Track, Pres_Levels) ;
-            Temperature_Retrieval:long_name = "Temperature Retrieval for 
+            Temperature_Retrieval:long_name = "Temperature Retrieval for
                                                the IAPP" ;
             Temperature_Retrieval:units = "degrees Kelvin" ;
 
     float WaterVapor_Retrieval(Along_Track, Across_Track, Pres_Levels) ;
-            WaterVapor_Retrieval:long_name = "Water Vapor Retrieval for 
+            WaterVapor_Retrieval:long_name = "Water Vapor Retrieval for
                                              the IAPP" ;
             WaterVapor_Retrieval:units = "g/kg" ;
 
     float Dew_Point_Temp_Retrieval(Along_Track, Across_Track, Pres_Levels) ;
-            Dew_Point_Temp_Retrieval:long_name = "Dew Point Temperature Retrieval 
+            Dew_Point_Temp_Retrieval:long_name = "Dew Point Temperature Retrieval
                                                   for the IAPP" ;
-            Dew_Point_Temp_Retrieval:units = "degrees Kelvin" ;                
+            Dew_Point_Temp_Retrieval:units = "degrees Kelvin" ;
     '''
 
     data_labels = [
@@ -303,7 +297,7 @@ def iapp_sounder(iapp_file_list,lat_0=None,lon_0=None):
         for label in data_labels:
             if sounding_inputs[label] != None:
                 LOG.info(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
-                for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                for attr_name in sounding_inputs[label]['node'].ncattrs():
                     attr = getattr(sounding_inputs[label]['node'],attr_name)
                     LOG.debug("{} = {}".format(attr_name,attr))
                     sounding_inputs[label][attr_name] = attr
@@ -312,7 +306,7 @@ def iapp_sounder(iapp_file_list,lat_0=None,lon_0=None):
 
         if row==None or col==None:
             raise Exception("No suitable lat/lon coordinates found, aborting...")
-             
+
         LOG.debug("Retrieved row,col = {},{}".format(row,col))
         sounding_inputs['lat_0'] = lat[row,col]
         sounding_inputs['lon_0'] = lon[row,col]
@@ -349,7 +343,7 @@ def iapp_sounder(iapp_file_list,lat_0=None,lon_0=None):
                     data_mask = np.ones(data.shape,dtype='bool')
                 else:
                     data_mask = data.mask
-            else: 
+            else:
                 data_mask = np.zeros(data.shape,dtype='bool')
 
             LOG.debug("There are {}/{} masked values in {}".\
@@ -384,7 +378,7 @@ def mirs_sounder(mirs_file_list,lat_0=None,lon_0=None):
     '''
     float Latitude(Scanline, Field_of_view) ;
             Latitude:long_name = "Latitude of the view (-90,90)" ;
-            
+
     float Longitude(Scanline,Field_of_view) ;
             Longitude:long_name = "Longitude of the view (-180,180)" ;
 
@@ -398,7 +392,7 @@ def mirs_sounder(mirs_file_list,lat_0=None,lon_0=None):
     float PVapor(Scanline, Field_of_view, P_Layer) ;
             PVapor:long_name = "Water vapor profile in g/kg" ;
             PVapor:scale = 1. ;
-    '''         
+    '''
 
     data_labels = [
                     'pres',
@@ -453,7 +447,7 @@ def mirs_sounder(mirs_file_list,lat_0=None,lon_0=None):
                 LOG.info(">>> Processing {} ...".\
                         format(sounding_inputs[label]['dset_name']))
                 sounding_inputs[label]['_FillValue'] = fill_value
-                for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                for attr_name in sounding_inputs[label]['node'].ncattrs():
                     attr = getattr(sounding_inputs[label]['node'],attr_name)
                     LOG.debug("{} = {}".format(attr_name,attr))
                     sounding_inputs[label][attr_name] = attr
@@ -462,7 +456,7 @@ def mirs_sounder(mirs_file_list,lat_0=None,lon_0=None):
 
         if row==None or col==None:
             raise Exception("No suitable lat/lon coordinates found, aborting...")
-             
+
         LOG.debug("Retrieved row,col = {},{}".format(row,col))
         sounding_inputs['lat_0'] = lat[row,col]
         sounding_inputs['lon_0'] = lon[row,col]
@@ -497,7 +491,7 @@ def mirs_sounder(mirs_file_list,lat_0=None,lon_0=None):
                     data_mask = np.ones(data.shape,dtype='bool')
                 else:
                     data_mask = data.mask
-            else: 
+            else:
                 data_mask = np.zeros(data.shape,dtype='bool')
 
             LOG.debug("There are {}/{} masked values in {}".\
@@ -591,15 +585,15 @@ def hsrtv_sounder(hsrtv_file_list,lat_0=None,lon_0=None):
         lat = sounding_inputs['lat']['node'][:,:]
         lon = sounding_inputs['lon']['node'][:,:]
 
-        #FIXME: All attributes for the HSRTV datasets appear to be strings, 
-        #       whether the attribute value is a string or not. So we can't 
-        #       determine the attribute type from the file, we just have 
+        #FIXME: All attributes for the HSRTV datasets appear to be strings,
+        #       whether the attribute value is a string or not. So we can't
+        #       determine the attribute type from the file, we just have
         #       *know* it. Why bother with self-descibing file formats then?
         for label in data_labels:
             if sounding_inputs[label] != None:
                 LOG.info(">>> Processing {} ...".\
                         format(sounding_inputs[label]['dset_name']))
-                for attr_name in sounding_inputs[label]['node'].attrs.keys(): 
+                for attr_name in sounding_inputs[label]['node'].attrs.keys():
                     attr = sounding_inputs[label]['node'].attrs[attr_name]
                     LOG.debug("{} = {}".format(attr_name,np.squeeze(attr)))
                     sounding_inputs[label][attr_name] = attr
@@ -608,7 +602,7 @@ def hsrtv_sounder(hsrtv_file_list,lat_0=None,lon_0=None):
 
         if row==None or col==None:
             raise Exception("No suitable lat/lon coordinates found, aborting...")
-             
+
         LOG.debug("Retrieved row,col = {},{}".format(row,col))
         sounding_inputs['lat_0'] = lat[row,col]
         sounding_inputs['lon_0'] = lon[row,col]
@@ -646,7 +640,7 @@ def hsrtv_sounder(hsrtv_file_list,lat_0=None,lon_0=None):
                     data_mask = np.ones(data.shape,dtype='bool')
                 else:
                     data_mask = data.mask
-            else: 
+            else:
                 data_mask = np.zeros(data.shape,dtype='bool')
 
             LOG.debug("There are {}/{} masked values in {}".\
@@ -707,7 +701,7 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
             H2O_MR:coordinates = "Time Latitude Longitude Effective_Pressure" ;
             H2O_MR:valid_range = 0.f, 1.e+08f ;
             H2O_MR:_FillValue = -9999.f ;
-    '''         
+    '''
 
     data_labels = [
                     'pres',
@@ -759,7 +753,7 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
             if sounding_inputs[label] != None:
                 LOG.info(">>> Processing {} ...".\
                         format(sounding_inputs[label]['dset_name']))
-                for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                for attr_name in sounding_inputs[label]['node'].ncattrs():
                     attr = getattr(sounding_inputs[label]['node'],attr_name)
                     LOG.debug("{} = {}".format(attr_name,attr))
                     sounding_inputs[label][attr_name] = attr
@@ -768,7 +762,7 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
 
         if row==None or col==None:
             raise Exception("No suitable lat/lon coordinates found, aborting...")
-             
+
         LOG.debug("Retrieved row,col = {},{}".format(row,col))
         sounding_inputs['lat_0'] = lat[row,col]
         sounding_inputs['lon_0'] = lon[row,col]
@@ -808,7 +802,7 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
                     data_mask = np.ones(data.shape,dtype='bool')
                 else:
                     data_mask = data.mask
-            else: 
+            else:
                 data_mask = np.zeros(data.shape,dtype='bool')
 
             LOG.debug("There are {}/{} masked values in {}".\
@@ -846,7 +840,7 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
 def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options):
 
 
-    # Determine the row and column from the input lat and lon and the 
+    # Determine the row and column from the input lat and lon and the
     # supplied geolocation
 
 
@@ -899,7 +893,7 @@ def _argparse():
     description = '''Create a Skew-T plot from input sounder data.'''
 
     usage = "usage: %prog [mandatory args] [options]"
-    version = __version__
+    version = "v1.0"
 
     parser = argparse.ArgumentParser(
                                      #version=version,
@@ -907,7 +901,7 @@ def _argparse():
                                      )
 
     # Mandatory/positional arguments
-    
+
     parser.add_argument(
                       action='store',
                       dest='input_file',
@@ -927,7 +921,7 @@ def _argparse():
                            '''.format(dataChoices.__str__()[1:-1])
                       )
 
-    # Optional arguments 
+    # Optional arguments
 
     parser.add_argument('--temp_min',
                       action="store",
@@ -950,8 +944,8 @@ def _argparse():
                       dest="dpi",
                       default='200.',
                       type=float,
-                      help='''The resolution in dots per inch of the output 
-                      png file. 
+                      help='''The resolution in dots per inch of the output
+                      png file.
                       [default: {}]'''.format(defaults["dpi"])
                       )
 
@@ -974,7 +968,7 @@ def _argparse():
                       dest="output_file",
                       default=defaults["output_file"],
                       type=str,
-                      help='''The filename of the output Skew-T png file. 
+                      help='''The filename of the output Skew-T png file.
                       [default: {}]'''.format(defaults["output_file"])
                       )
 
@@ -983,16 +977,16 @@ def _argparse():
                       dest="outputFilePrefix",
                       default=defaults["outputFilePrefix"],
                       type=str,
-                      help="""String to prefix to the automatically generated 
-                      png name. 
+                      help="""String to prefix to the automatically generated
+                      png name.
                       [default: {}]""".format(defaults["outputFilePrefix"])
                       )
 
     parser.add_argument("-v", "--verbose",
                       dest='verbosity',
-                      action="count", 
+                      action="count",
                       default=2,
-                      help='''each occurrence increases verbosity 1 level from 
+                      help='''each occurrence increases verbosity 1 level from
                       INFO. -v=DEBUG'''
                       )
 
@@ -1002,18 +996,13 @@ def _argparse():
                       default=False,
                       help='''Silence all console output'''
                       )
-     
+
     args = parser.parse_args()
 
     # Set up the logging
-    verbosity = 0 if args.quiet else args.verbosity
-    console_logFormat = '%(asctime)s : (%(levelname)s):%(filename)s:%(funcName)s:%(lineno)d:  %(message)s'
-    dateFormat = '%Y-%m-%d %H:%M:%S'
     levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
-    level = levels[min(verbosity,3)]
-    logging.basicConfig(level = level, 
-            format = console_logFormat, 
-            datefmt = dateFormat)
+    level = levels[args.verbosity if args.verbosity < 4 else 3]
+    log_common.configure_logging(level)
 
     return args
 
@@ -1062,8 +1051,8 @@ def main():
     else:
         pass
 
-    #input_file = path.basename(input_file)
-    input_file = path.basename(input_file_list[0])
+    #input_file = os.path.basename(input_file)
+    input_file = os.path.basename(input_file_list[0])
 
     # Determine the filename
     file_suffix = "{}_SkewT".format(datatype)
@@ -1080,7 +1069,7 @@ def main():
 
     lat = sounding_inputs['lat_0']
     lon = sounding_inputs['lon_0']
-    input_file = path.basename(input_file)
+    input_file = os.path.basename(input_file)
     plot_options = {}
 
     # Default plot labels
@@ -1100,4 +1089,4 @@ def main():
 
 
 if __name__=='__main__':
-    sys.exit(main())  
+    sys.exit(main())
