@@ -31,32 +31,32 @@ PROFILING_ENABLED = os.environ.get('CSPP_PROFILE', None) is not None
 STRACE_ENABLED = os.environ.get('CSPP_STRACE', None) is not None
 
 
-class SingleLevelFilter(logging.Filter):
-    """
-     ref: http://stackoverflow.com/questions/1383254/logging-streamhandler-and-standard-streams
-    """
-    def __init__(self, passlevels, reject):
-        """
+#class SingleLevelFilter(logging.Filter):
+    #"""
+     #ref: http://stackoverflow.com/questions/1383254/logging-streamhandler-and-standard-streams
+    #"""
+    #def __init__(self, passlevels, reject):
+        #"""
 
 
-            :rtype : object
-            :param passlevels:
-            :param reject:
-            """
-        super(SingleLevelFilter, self).__init__()
-        self.passlevels = set(passlevels)
-        self.reject = reject
+            #:rtype : object
+            #:param passlevels:
+            #:param reject:
+            #"""
+        #super(SingleLevelFilter, self).__init__()
+        #self.passlevels = set(passlevels)
+        #self.reject = reject
 
-    def filter(self, record):
-        """
+    #def filter(self, record):
+        #"""
 
-        :param record:
-        :return:
-        """
-        if self.reject:
-            return record.levelno not in self.passlevels
-        else:
-            return record.levelno in self.passlevels
+        #:param record:
+        #:return:
+        #"""
+        #if self.reject:
+            #return record.levelno not in self.passlevels
+        #else:
+            #return record.levelno in self.passlevels
 
 
 def split_search_path(s):

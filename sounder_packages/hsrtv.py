@@ -3,7 +3,7 @@
 """
 HSRTV.py
 
-Purpose: Provide read methods for various datasets associated with the 
+Purpose: Provide read methods for various datasets associated with the
 Hyperspectral Retrieval (HSRTV) Package.
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2015-04-07.
@@ -23,36 +23,46 @@ Copyright (c) 2012-2016 University of Wisconsin Regents. All rights reserved.
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import os, sys, logging, traceback
-from os import path,uname,environ
+import os
+import sys
+import logging
+import traceback
+from os import path, uname, environ
 import string
 import re
 import uuid
-from shutil import rmtree,copyfile
+from shutil import rmtree, copyfile
 from glob import glob
 from time import time
-from datetime import datetime,timedelta
+from datetime import datetime, timedelta
 
 import numpy as np
 from numpy import ma
 import copy
 
-from ql_common import get_pressure_index,get_geo_indices,get_pressure_level
+from ql_common import get_pressure_index, get_geo_indices, get_pressure_level
 from ql_common import Datafile_HDF5
 from thermo import rh_to_mr
 
+from sounder_packages import Sounder_Packages
 
 # every module should have a LOG object
 LOG = logging.getLogger(__file__)
+
+# Dimension names
+dimension_name = {}
+dimension_name['nrows'] = 'Along_Track_Y'
+dimension_name['ncols'] = 'Across_Track_X'
+dimension_name['nlevels'] = 'Number_of_Levels'
 
 # Files dataset names for each dataset type
 dset_name = {}
 dset_name['pres'] = '/Plevs'
 dset_name['pres_array'] = None
-dset_name['lat']  = '/Latitude'
-dset_name['lon']  = '/Longitude'
-dset_name['ctp']  = '/CTP'
-dset_name['ctt']  = '/CTT'
+dset_name['lat'] = '/Latitude'
+dset_name['lon'] = '/Longitude'
+dset_name['ctp'] = '/CTP'
+dset_name['ctt'] = '/CTT'
 dset_name['temp'] = '/TAir'
 dset_name['temp_gdas'] = '/GDAS_TAir'
 #dset_name['temp_gdas_cube'] = None
@@ -70,10 +80,10 @@ dset_name['wvap_gdas'] = None
 dset_type = {}
 dset_type['pres'] = 'profile'
 dset_type['pres_array'] = 'level'
-dset_type['lat']  = 'single'
-dset_type['lon']  = 'single'
-dset_type['ctp']  = 'single'
-dset_type['ctt']  = 'single'
+dset_type['lat'] = 'single'
+dset_type['lon'] = 'single'
+dset_type['ctp'] = 'single'
+dset_type['ctt'] = 'single'
 dset_type['temp'] = 'level'
 dset_type['temp_gdas'] = 'level'
 #dset_type['temp_gdas_cube'] = 'level'
@@ -91,31 +101,31 @@ dset_type['wvap_gdas'] = 'level'
 dset_deps = {}
 dset_deps['pres'] = []
 dset_deps['pres_array'] = []
-dset_deps['lat']  = []
-dset_deps['lon']  = []
-dset_deps['ctp']  = []
-dset_deps['ctt']  = []
-dset_deps['temp'] = []
+dset_deps['lat'] = []
+dset_deps['lon'] = []
+dset_deps['ctp'] = []
+dset_deps['ctt'] = []
+dset_deps['temp'] = [] ## TEST
 dset_deps['temp_gdas'] = []
 #dset_deps['temp_gdas_cube'] = []
 dset_deps['2temp'] = ['temp']
-dset_deps['cold_air_aloft'] = ['temp','wvap','temp_gdas','relh_gdas']
+dset_deps['cold_air_aloft'] = ['temp', 'wvap', 'temp_gdas', 'relh_gdas']
 dset_deps['dwpt'] = []
 dset_deps['relh'] = []
 dset_deps['relh_gdas'] = []
 #dset_deps['relh_gdas_cube'] = []
 dset_deps['wvap'] = []
-dset_deps['wvap_gdas'] = ['temp_gdas','pres_array','relh_gdas']
+dset_deps['wvap_gdas'] = ['temp_gdas', 'pres_array', 'relh_gdas']
 #dset_deps['wvap_gdas_cube'] = ['temp_gdas','pres_array','relh_gdas']
 
 # The class method used to read/calculate each dataset.
 dset_method = {}
 dset_method['pres'] = []
 dset_method['pres_array'] = []
-dset_method['lat']  = []
-dset_method['lon']  = []
-dset_method['ctp']  = []
-dset_method['ctt']  = []
+dset_method['lat'] = []
+dset_method['lon'] = []
+dset_method['ctp'] = []
+dset_method['ctt'] = []
 dset_method['temp'] = []
 dset_method['temp_gdas'] = []
 #dset_method['temp_gdas_cube'] = []
@@ -130,7 +140,7 @@ dset_method['wvap_gdas'] = []
 #dset_method['wvap_gdas_cube'] = []
 
 
-class HSRTV():
+class HSRTV(Sounder_Packages):
     '''
     Plevs: Pressure for each level in mb (hPa)
     TAir: Temperature profile in K
@@ -160,7 +170,8 @@ class HSRTV():
         missing_value : -9999.
         units : %
     /H2OMMR
-        description : retrieved humidity (water vapor mixing ratio) profile at 101 levels
+        description : retrieved humidity (water vapor mixing ratio) profile at
+                      101 levels
         missing_value : -9999.
         units : g/kg
     /CTP
@@ -173,13 +184,22 @@ class HSRTV():
         units : K
     '''
 
-    def __init__(self,file_list,data_name,plot_type,pres_0=None,elev_0=None,
-            lat_0=None,lon_0=None,footprint=None):
+    def __init__(self, *args, **kwargs):
+        Sounder_Packages.__init__(self, *args, **kwargs)
+
+        file_list, data_name, plot_type = args
+
+        pres_0 = kwargs['pres_0']
+        elev_0 = kwargs['elev_0']
+        lat_0 = kwargs['lat_0']
+        lon_0 = kwargs['lon_0']
+        footprint = kwargs['footprint']
 
         self.file_list = file_list
+        self.plot_type = plot_type
         self.have_geo = False
+        self.dimensions = {}
         self.datasets = {}
-
 
         # Construct a list of the required datasets...
         dsets_to_read = [data_name] + self.get_dset_deps(data_name)
@@ -210,10 +230,16 @@ class HSRTV():
         dfile_obj = Datafile_HDF5(file_list[0])
         data_obj = dfile_obj.Dataset(dfile_obj,dset_name['pres'])
         self.pressure = data_obj.dset[:]
+        for key in dimension_name:
+            self.dimensions[key] = dfile_obj.attrs[dimension_name[key]]
+            LOG.debug("dimension {} = {}".format(key,self.dimensions[key]))
+
         dfile_obj.close()
 
         # Determine the elevation dataset...
+        self.pres_0 = pres_0
         self.elev_0 = elev_0
+
         if elev_0 != None:
 
 
@@ -234,10 +260,10 @@ class HSRTV():
             self.datasets['wvap_gdas'] = {}
             self.datasets['wvap_gdas']['attrs'] = {}
             self.datasets['wvap_gdas']['data'] = np.array([1]) # placeholder
-            level = -4
             press = self.datasets['pressure']['data']
             relh = ma.array(self.datasets['relh_gdas']['data'],mask=self.datasets['relh_gdas']['data_mask'])
             temp = ma.array(self.datasets['temp_gdas']['data'],mask=self.datasets['temp_gdas']['data_mask'])
+
 
             # Compute the elevation cube
             self.elevation = get_elevation(press,temp,relh)
@@ -246,14 +272,14 @@ class HSRTV():
             match_val = elev_0
             cube_idx = get_level_indices(self.elevation,match_val)
             self.cube_idx = cube_idx
+            LOG.info("\ncube_idx = \n{}".format(cube_idx))
 
             elev_level = -9999. * np.ones(self.elevation[0].shape,dtype='float')
             elev_level[(cube_idx[1],cube_idx[2])] = self.elevation[cube_idx]
             LOG.info("\nelev_level = \n{}".format(elev_level))
 
-        #sys.exit(0)
+            #sys.exit(0)
 
-        # 
         if plot_type == 'image':
 
             LOG.info("Preparing a 'level' plot...")
@@ -266,6 +292,8 @@ class HSRTV():
                 self.level,self.pres_0 = get_pressure_level(self.pressure,pres_0)
                 # Contruct a pass of the required datasets at the desired pressure.
                 self.construct_level_pass(file_list,self.level,None,None,None)
+
+            LOG.info("\t\tplot type is {}".format(self.plot_type))
 
             LOG.debug("\n\n>>> Intermediate dataset manifest...\n")
             LOG.debug(self.print_dataset_manifest(self))
@@ -322,13 +350,25 @@ class HSRTV():
             self.dsets_to_read.remove('lon')
 
             LOG.info(">>> Reading in the remaining dataset slices..")
-            LOG.debug("(level,row,col)  = ({}, {}, {})".format(None,self.row,self.col))
-            # This is to slice along the rows
-            self.construct_slice_pass(file_list,None,None,self.col)
-            # This is to slice along the cols
-            #self.construct_slice_pass(file_list,None,self.row,None)
+            slice_along_col = True
+            if slice_along_col:
+                LOG.debug("along column: (level,row,col)  = ({}, {}, {})".format(None,None,self.col))
+                # This is to slice along a column (across the rows)
+                self.construct_slice_pass(file_list,None,None,self.col)
+            else:
+                LOG.debug("along row: (level,row,col)  = ({}, {}, {})".format(None,self.row,None))
+                # This is to slice along a row (across the columns)
+                self.construct_slice_pass(file_list,None,self.row,None)
 
             self.dsets_to_read = list(total_dsets_to_read)
+
+        # Rationalise the satellite name...
+        satellite_names = {'Aqua': u'Aqua',
+                           'METOP-A': u'Metop-A',
+                           'NPP': u'NPP'}
+        for filename in self.datasets['file_attrs'].keys():
+            mission_name = self.datasets['file_attrs'][filename]['Mission_Name']
+            self.datasets['file_attrs'][filename]['Satellite_Name'] = satellite_names[mission_name]
 
 
         LOG.debug("\n\n>>> Final dataset manifest...\n")
@@ -338,10 +378,10 @@ class HSRTV():
     def construct_cube_pass(self,file_list,dsets_to_read=None):
         '''
         Read in each of the desired datasets. Each of the desired datasets may
-        be either a "base" dataset, which is read directly from the file, or a 
+        be either a "base" dataset, which is read directly from the file, or a
         "derived" dataset, which is constructed from previously read datasets.
 
-        For each granule, all base and derived datasets should be completed, to 
+        For each granule, all base and derived datasets should be completed, to
         ensure that any dataset interdependencies to not fail due to differing array
         shapes.
         '''
@@ -404,8 +444,17 @@ class HSRTV():
                     LOG.info("\t\tthis_granule_data['{}'].shape = {}".format(
                         dset,this_granule_data[dset].shape))
 
-                    missing_value = float(self.datasets[dset]['attrs']['missing_value'])
+                    # Determine the missing/fill value
+                    missing_value = None
+                    for fill_val_key in dfile_obj.fill_val_keys:
+                        if fill_val_key in  self.datasets[dset]['attrs'].keys():
+                            missing_value = float(self.datasets[dset]['attrs'][fill_val_key])
+                            LOG.debug("Setting missing_value to {} from {} dataset attributes"
+                                    .format(missing_value, dset))
+                    if missing_value == None:
+                        missing_value = dfile_obj.fill_value
                     LOG.info("\t\tMissing value = {}".format(missing_value))
+
                     data_mask = ma.masked_equal(data,missing_value).mask
                     LOG.info("\t\tdata_mask.shape = {}".format(data_mask.shape))
                     if data_mask.shape == ():
@@ -451,10 +500,10 @@ class HSRTV():
     def construct_slice_pass(self,file_list,level,row,col):
         '''
         Read in each of the desired datasets. Each of the desired datasets may
-        be either a "base" dataset, which is read directly from the file, or a 
+        be either a "base" dataset, which is read directly from the file, or a
         "derived" dataset, which is constructed from previously read datasets.
 
-        For each granule, all base and derived datasets should be completed, to 
+        For each granule, all base and derived datasets should be completed, to
         ensure that any dataset interdependencies to not fail due to differing array
         shapes.
         '''
@@ -510,8 +559,17 @@ class HSRTV():
                     LOG.info("\t\tthis_granule_data['{}'].shape = {}".format(
                         dset,this_granule_data[dset].shape))
 
-                    missing_value = float(self.datasets[dset]['attrs']['missing_value'])
-                    #LOG.info("\t\tMissing value = {}".format(missing_value))
+                    # Determine the missing/fill value
+                    missing_value = None
+                    for fill_val_key in dfile_obj.fill_val_keys:
+                        if fill_val_key in  self.datasets[dset]['attrs'].keys():
+                            missing_value = float(self.datasets[dset]['attrs'][fill_val_key])
+                            LOG.debug("Setting missing_value to {} from {} dataset attributes"
+                                    .format(missing_value, dset))
+                    if missing_value == None:
+                        missing_value = dfile_obj.fill_value
+                    LOG.info("\t\tMissing value = {}".format(missing_value))
+
                     data_mask = ma.masked_equal(data,missing_value).mask
                     LOG.info("\t\tdata_mask.shape = {}".format(data_mask.shape))
                     if data_mask.shape == ():
@@ -553,14 +611,13 @@ class HSRTV():
                 LOG.info("\tExiting...")
                 sys.exit(1)
 
-
     def construct_level_pass(self,file_list,level,elev_idx,row,col):
         '''
         Read in each of the desired datasets. Each of the desired datasets may
-        be either a "base" dataset, which is read directly from the file, or a 
+        be either a "base" dataset, which is read directly from the file, or a
         "derived" dataset, which is constructed from previously read datasets.
 
-        For each granule, all base and derived datasets should be completed, to 
+        For each granule, all base and derived datasets should be completed, to
         ensure that any dataset interdependencies to not fail due to differing array
         shapes.
         '''
@@ -616,8 +673,17 @@ class HSRTV():
                     LOG.info("\t\tthis_granule_data['{}'].shape = {}".format(
                         dset,this_granule_data[dset].shape))
 
-                    missing_value = float(self.datasets[dset]['attrs']['missing_value'])
-                    #LOG.info("\t\tMissing value = {}".format(missing_value))
+                    # Determine the missing/fill value
+                    missing_value = None
+                    for fill_val_key in dfile_obj.fill_val_keys:
+                        if fill_val_key in  self.datasets[dset]['attrs'].keys():
+                            missing_value = float(self.datasets[dset]['attrs'][fill_val_key])
+                            LOG.debug("Setting missing_value to {} from {} dataset attributes"
+                                    .format(missing_value, dset))
+                    if missing_value == None:
+                        missing_value = dfile_obj.fill_value
+                    LOG.info("\t\tMissing value = {}".format(missing_value))
+
                     data_mask = ma.masked_equal(data,missing_value).mask
                     #LOG.info("\t\tdata_mask.shape = {}".format(data_mask.shape))
                     if data_mask.shape == ():
@@ -666,21 +732,36 @@ class HSRTV():
         a single array (which may be a surface/top, pressure level, or slice dataset.
         '''
 
+        LOG.info("\t\tRetrieving {}".format(data_name))
+
+        # The dataset dimensions from the file dimension block.
+        nrows = self.dimensions['nrows']
+        ncols = self.dimensions['ncols']
+        nlevels = self.dimensions['nlevels']
+        LOG.info("\t\t(nlevels,nrows,ncols)  = ({}, {}, {})".format(nlevels,nrows,ncols))
+
         LOG.info("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
 
         level = slice(level) if level == None else level
         row = slice(row) if row == None else row
         col = slice(col) if col == None else col
 
-        data_obj = dfile_obj.Dataset(dfile_obj,dset_name[data_name])
+        LOG.info("\t\t(level,row,col) slice objects = ({}, {}, {})".format(level,row,col))
 
+        LOG.info("\t\tplot type is {}".format(self.plot_type))
+
+        # Get a reference to the dataset object...
+        data_obj = dfile_obj.Dataset(dfile_obj,dset_name[data_name])
+        LOG.info("\t\tdata_obj.dset.shape = {}".format(data_obj.dset.shape))
+
+        # Determine whether this is a single pressure level (i.e.: ctp) or a profile dataset, and 
+        # get the correct array slice of the dataset array...
         if dset_type[data_name] == 'single':
             LOG.info("\t\tgetting a 'single' dataset...")
             dset = data_obj.dset[row,col].squeeze()
-        elif dset_type[data_name] == 'level': 
+        elif dset_type[data_name] == 'level':
             LOG.info("\t\tgetting a 'level' dataset...")
             dset = data_obj.dset[level,row,col].squeeze()
-
 
         LOG.info("\t\tDataset {} has shape {}".format(data_name,dset.shape))
 
@@ -688,48 +769,19 @@ class HSRTV():
 
         return dset
 
-
-    #def latlon_array(self,dfile_obj,data_name,level,row,col,this_granule_data,this_granule_mask):
-        #'''
-        #Custom method to return an array of the latitude or longitude, whether it be at a single
-        #pressure level, or a vertical slice.
-        #'''
-
-        #LOG.info("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
-
-        #level = slice(level) if level == None else level
-        #row = slice(row) if row == None else row
-        #col = slice(col) if col == None else col
-
-        #LOG.info("\t\tComputing {}".format(data_name))
-
-        #LOG.info("\t\tlat has shape {}".format(this_granule_data['lat'].shape))
-
-        ## Contruct the pressure array.
-        #nrows = this_granule_data['lat'].shape[0]
-        #ncols = this_granule_data['lat'].shape[1]
-        #nlevels = len(self.pressure)
-        #self.pressure_array = np.broadcast_to(np.broadcast_to(self.pressure,(nrows,nlevels)),(ncols,nrows,nlevels)).T
-
-        #LOG.info("\t\tpressure_array.shape = {}".format(self.pressure_array.shape))
-
-        #LOG.info("\t\tgetting a 'level' dataset...")
-        #dset = self.pressure_array[level,row,col].squeeze()
-        #LOG.info("\t\tdset.shape = {}".format(dset.shape))
-        #dset_mask = np.zeros(dset.shape,dtype='bool')
-
-        #dset = ma.array(dset,mask=dset_mask)
-
-        #self.datasets[data_name]['attrs'] = self.datasets['lat']['attrs']
-
-        #return dset
-
-
     def pressure_array(self,dfile_obj,data_name,level,row,col,this_granule_data,this_granule_mask):
         '''
         Custom method to return an array of the pressure, whether it be at a single
         pressure level, or a vertical slice.
         '''
+
+        LOG.info("\t\tComputing {}".format(data_name))
+
+        # The dataset dimensions from the file dimension block.
+        nrows = self.dimensions['nrows']
+        ncols = self.dimensions['ncols']
+        nlevels = self.dimensions['nlevels']
+        LOG.info("\t\t(nlevels,nrows,ncols)  = ({}, {}, {})".format(nlevels,nrows,ncols))
 
         LOG.info("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
 
@@ -737,11 +789,14 @@ class HSRTV():
         row = slice(row) if row == None else row
         col = slice(col) if col == None else col
 
-        LOG.info("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
-
-        LOG.info("\t\tComputing {}".format(data_name))
+        LOG.info("\t\t(level,row,col) has slice objects = ({}, {}, {})".format(level,row,col))
 
         LOG.info("\t\trelh_gdas has shape {}".format(this_granule_data['relh_gdas'].shape))
+
+        LOG.info("\t\tplot type is {}".format(self.plot_type))
+
+        self.pressure_array = np.broadcast_to(np.broadcast_to(self.pressure,(nrows,nlevels)),(ncols,nrows,nlevels)).T
+        LOG.info("\t\tpressure_array.shape = {}".format(self.pressure_array.shape))
 
         # Determine whether this is an level or slice, and determine the size
         # of the relh_gdas array...
@@ -762,9 +817,6 @@ class HSRTV():
         nrows = this_granule_data['relh_gdas'].shape[0]
         ncols = this_granule_data['relh_gdas'].shape[1]
         LOG.info("\t\t(nlevels,nrows,ncols)  = ({}, {}, {})".format(nlevels,nrows,ncols))
-        self.pressure_array = np.broadcast_to(np.broadcast_to(self.pressure,(nrows,nlevels)),(ncols,nrows,nlevels)).T
-
-        LOG.info("\t\tpressure_array.shape = {}".format(self.pressure_array.shape))
 
         LOG.info("\t\tgetting a 'level' dataset...")
         dset = self.pressure_array[level,row,col].squeeze()
@@ -776,7 +828,6 @@ class HSRTV():
         self.datasets[data_name]['attrs'] = self.datasets['lat']['attrs']
 
         return dset
-
 
     def cold_air_aloft(self,dfile_obj,data_name,level,row,col,this_granule_data,this_granule_mask):
         '''
@@ -839,7 +890,7 @@ class HSRTV():
         LOG.info("\t\tGDAS Temp has shape {}".format(this_granule_data['temp_gdas'].shape))
         LOG.info("\t\tGDAS RH   has shape {}".format(this_granule_data['relh_gdas'].shape))
 
-        # Get the pressure 
+        # Get the pressure
         #slice_length = temp_gdas.shape[1]
         #pressure_row = slice(0,slice_length)
         #pressure = self.pressure_array[level,pressure_row,col].squeeze()
@@ -899,7 +950,7 @@ class HSRTV():
                         data_mask = np.ones(data.shape,dtype='bool')
                     else:
                         data_mask = data.mask
-                else: 
+                else:
                     data_mask = np.zeros(data.shape,dtype='bool')
 
                 LOG.debug("There are {}/{} masked values in {}".\
@@ -941,8 +992,8 @@ class HSRTV():
 
     def get_dset_deps(self,dset):
         '''
-        For a particular dataset, returns the prerequisite datasets. Works 
-        recursively to find multiple levels of dependencies. 
+        For a particular dataset, returns the prerequisite datasets. Works
+        recursively to find multiple levels of dependencies.
         Note: Currently there is nothing in place to detect circular dependencies,
         so be careful of how you construct the dependencies.
         '''
@@ -1021,7 +1072,7 @@ def gphite( press, temp, wvap, z_sfc, n_levels, i_dir):
     rog = 29.2898
     fac = 0.5 * rog
 
-    # Determine the level of the lowest valid temp and wvap values in the 
+    # Determine the level of the lowest valid temp and wvap values in the
     # profile...
 
     profile_mask = temp.mask + wvap.mask
@@ -1155,7 +1206,6 @@ def get_elevation(pressure,temp,relh):
     computes the elevation for each element of the cube.
     '''
 
-
     np.set_printoptions(precision=3)
     cube_mask = np.zeros(pressure.shape,dtype='bool')
 
@@ -1192,6 +1242,8 @@ def get_elevation(pressure,temp,relh):
                 #LOG.warn("elevation[:,{},{}] failed".format(row,col))
                 elevation[:,row,col] = -9999.
 
+    LOG.debug("\nelevation[{}] = \n{}\n".format(level,wvap[level]))
+
     return elevation
 
 
@@ -1207,8 +1259,8 @@ def get_level_indices(data,match_val):
 
     data_level_idx = -9999 * np.ones(data[0].shape,dtype='int')
 
-    # Calculate the profile index corresponding to the smallest residual beteween 
-    # match_val and the profile values (for each row and col) 
+    # Calculate the profile index corresponding to the smallest residual beteween
+    # match_val and the profile values (for each row and col)
     for row in np.arange(nrows):
         for col in np.arange(ncols):
             try:
@@ -1224,11 +1276,11 @@ def get_level_indices(data,match_val):
                 if len(data_profile) == 0:
                     raise ValueError('Entire profile is masked.')
 
-                # Compute the absolute residual of each element of this profile 
+                # Compute the absolute residual of each element of this profile
                 # from the match_val.
                 data_profile = np.abs(data_profile - match_val)
 
-                # Compute the minimum value of the residuals, and determine its 
+                # Compute the minimum value of the residuals, and determine its
                 # index in the original profile.
                 data_profile_min = data_profile.min()
                 data_profile_min_idx = np.where(data_profile == data_profile_min)[0][0]
@@ -1254,7 +1306,7 @@ def get_level_indices(data,match_val):
     LOG.debug("cube_idx[1] = {} has shape {}".format(cube_idx[1], cube_idx[1].shape))
     LOG.debug("cube_idx[2] = {} has shape {}".format(cube_idx[2], cube_idx[2].shape))
 
-    # Assign the "level" index list to the 
+    # Assign the "level" index list to the
     cube_mask = ma.masked_equal(np.ravel(data_level_idx),-9999).mask
     cube_idx[0] = ma.array(data_level_idx, mask=cube_mask).compressed()
     cube_idx[1] = ma.array(cube_idx[1]   , mask=cube_mask).compressed()
@@ -1269,53 +1321,3 @@ def get_level_indices(data,match_val):
     return cube_idx
 
 
-def get_pressure_levels():
-    # Construct the pressure cube
-    nlevs,nrows,ncols = 6,3,5
-    little_pressure = np.arange(nlevs)*200.
-    pressure_array = np.broadcast_to(np.broadcast_to(little_pressure,(nrows,nlevs)),(ncols,nrows,nlevs)).T
-
-    # Get the indices of a single level
-    pressure_idx = list(np.where(pressure_array==200.))
-
-    # Construct a list of level indices
-    lev_idx = np.arange(nrows*ncols)
-    lev_idx[lev_idx>5] = 2
-
-    # Replace the level indices in pressure_idx with the custom level indices in lev_idx
-    pressure_idx[0] = lev_idx
-    pressure_idx = tuple(pressure_idx)
-
-    pressure_array[pressure_idx]
-    pressure_levels = pressure_array[pressure_idx].reshape((nrows,ncols))
-
-
-def press2alt(p,z):
-    '''
-    
-    Routine to get altimeter setting from pressure and elevation.
-
-    Inputs/Outputs:
-
-       Variable     Var Type     I/O   Description
-      ----------   ----------   ----- -------------
-       p               RA         O    Pressure (X)
-       z               RA         I    Elevation in meters.
-       alt             RA         I    Altimeter setting (X)
-
-
-    User Notes:
-
-    1.  No quality control is performed in this routine.
-
-    '''
-
-    flg = 99998.0
-    flag = 1e37
-    T0 = 288.0
-    gamma = 0.0065
-    g_Rgamma = 5.2532
-
-    alt = p / ((T0-gamma * z)/T0)**g_Rgamma
-
-    return alt

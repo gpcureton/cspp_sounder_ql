@@ -85,10 +85,24 @@ class Datafile_NetCDF():
             LOG.error('Input file {} does not exist, aborting...'.format(self.input_file))
             sys.exit(1)
 
+        # The file object dimensions
+        self.dimensions = {}
+        for key in self.file_obj.dimensions.keys():
+            self.dimensions[key] = len(self.file_obj.dimensions[key])
+            LOG.debug("dimension {} = {}".format(key,self.dimensions[key]))
+
         # Dictionary of file object attributes
         self.attrs = {}
         for attr_key in self.file_obj.ncattrs():
             self.attrs[attr_key] = getattr(self.file_obj,attr_key)
+            LOG.debug("file attrs[{}]  = {}".format(attr_key, self.attrs[attr_key]))
+
+        self.fill_val_keys = ['missing_value', '_FillValue']
+        self.fill_value = None
+        for fill_val_key in self.fill_val_keys:
+            if fill_val_key in  self.attrs.keys():
+                self.fill_value = self.attrs[fill_val_key]
+        LOG.debug("self.fill_value = {}".format(self.fill_value))
 
         # Ordered dictionary of dataset objects
         self.data_dict = self.file_obj.variables
@@ -111,8 +125,10 @@ class Datafile_NetCDF():
             for attr_key in selfd.dset_obj.ncattrs():
                 selfd.attrs[attr_key] = getattr(selfd.dset_obj,attr_key)
 
-            selfd.dset = ma.masked_equal(selfd.dset_obj[:],selfd.attrs['_FillValue'])
-            #selfd.dset = selfd.dset * selfd.attrs['scale_factor'] + selfd.attrs['add_offset']
+            if '_FillValue' in selfd.attrs.keys():
+                selfd.dset = ma.masked_equal(selfd.dset_obj[:],selfd.attrs['_FillValue'])
+            else:
+                selfd.dset = selfd.dset_obj[:]
 
     def close(self):
         LOG.debug('Closing {}...'.format(self.input_file))
@@ -137,6 +153,14 @@ class Datafile_HDF5():
         self.attrs = {}
         for attr_key in self.file_obj.attrs.keys():
             self.attrs[attr_key] = self.file_obj.attrs[attr_key][0]
+            LOG.debug("file attrs[{}]  = {}".format(attr_key, self.attrs[attr_key]))
+
+        self.fill_val_keys = ['missing_value', '_FillValue']
+        self.fill_value = None
+        for fill_val_key in self.fill_val_keys:
+            if fill_val_key in  self.attrs.keys():
+                self.fill_value = self.attrs[fill_val_key]
+        LOG.debug("self.fill_value = {}".format(self.fill_value))
 
         # Dictionary of dataset objects
         self.data_dict = {}
@@ -163,8 +187,7 @@ class Datafile_HDF5():
                 selfd.attrs[attr_key] = selfd.dset_obj.attrs[attr_key][0]
 
             if 'missing_value' in selfd.attrs.keys():
-                selfd.dset = ma.masked_equal(selfd.dset_obj[:],
-                        float(selfd.attrs['missing_value']))
+                selfd.dset = ma.masked_equal(selfd.dset_obj[:], float(selfd.attrs['missing_value']))
             else:
                 selfd.dset = selfd.dset_obj[:]
 
@@ -807,8 +830,6 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
         # LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".format(lat_0, lon_0))
         LOG.info("Incomplete lat/lon pair given, using ({},{})".format(lat_0,lon_0))
 
-    # sys.exit(0)
-
     LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat),np.max(lat)))
     LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon),np.max(lon)))
 
@@ -1083,10 +1104,23 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
         # Non lat/lon pair given, use the central unmasked values.
         row_idx = int(nrows/2.)
         col_idx = int(ncols/2.)
-        lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
-        lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
-        LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
-                format(lat_0,lon_0))
+
+        # Sometimes the geolocation corners are missing, which makes it difficult to determine the
+        # proper granule extent.
+        if lat_0 == None:
+            if ma.is_masked(lat[row_idx,col_idx]):
+                lat_0 = (np.max(lat) + np.min(lat)) / 2.
+            else:
+                lat_0 = lat[row_idx,col_idx]
+        if lon_0 == None:
+            if ma.is_masked(lon[row_idx,col_idx]):
+                lon_0 = (np.max(lon) + np.min(lon)) / 2.
+            else:
+                lon_0 = lon[row_idx,col_idx]
+
+        #lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
+        #lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
+        LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".format(lat_0,lon_0))
 
     LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat),np.max(lat)))
     LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon),np.max(lon)))
@@ -1201,15 +1235,13 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
 
     # Plot the colorbar.
     cb = fig.colorbar(cs, cax=cax, orientation='horizontal')
-    ppl.setp(cax.get_xticklabels(),fontsize=font_scale*9)
-    ppl.setp(cax.get_xticklines(),visible=False)
 
     # Set the colourbar tick locations and ticklabels
-    #ppl.setp(cb.ax,xticks=CMD.ViirsCMTickPos) # In colorbar axis coords (0..1)
     tickpos_data_coords = vmax*tickPos
-    cb.set_ticks(tickpos_data_coords) # In data coords (0..3)
-    tick_names = dataset_options['tick_names']
-    ppl.setp(cb.ax,xticklabels=tick_names)
+    cb.set_ticks(tickpos_data_coords) # In data coords...
+    cb.set_ticklabels(dataset_options['tick_names'])
+    ppl.setp(cax.get_xticklabels(),fontsize=font_scale*9)
+    ppl.setp(cax.get_xticklines(),visible=False)
 
     # Colourbar title
     cax_title = ppl.setp(cax,title=cbar_title)
@@ -1325,7 +1357,7 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
     LOG.info("pressure.shape = {}".format(pressure.shape))
 
     pressure_slice = np.broadcast_to(pressure,(nrows,nlevels)).T
-    LOG.info("pressure_slice = {}".format(pressure_slice))
+    #LOG.debug("pressure_slice = {}".format(pressure_slice))
     LOG.info("pressure_slice.shape = {}".format(pressure_slice.shape))
 
     LOG.info("elevation = {}".format(elevation))
@@ -1357,6 +1389,7 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
     ###########################################################################
     # Building interpolated dataset
     ###########################################################################
+    LOG.info("elevation = {}".format(elevation))
 
     num_x_indicies = 101
     num_y_indicies = 101
@@ -1415,7 +1448,7 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
         LOG.info("yMin,yMax = {},{}".format(yMin,yMax))
 
         y = pressure_slice.ravel()
-        LOG.info("y = {}".format(y))
+        LOG.debug("y = {}".format(y))
         LOG.info("y.shape = {}".format(y.shape))
 
         LOG.info("zMin,zMax = {},{}".format(np.min(z),np.max(z)))
@@ -1644,7 +1677,9 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     LOG.info("lat_slice.shape = {}".format(lat_slice.shape))
 
     LOG.info("pressure.shape = {}".format(pressure.shape))
+
     pressure_slice = np.broadcast_to(pressure,(nrows,nlevels)).T
+    #LOG.debug("pressure_slice = {}".format(pressure_slice))
     LOG.info("pressure_slice.shape = {}".format(pressure_slice.shape))
 
     LOG.info("elevation = {}".format(elevation))
@@ -1665,6 +1700,8 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     canvas = FigureCanvas(fig)
 
     ax = fig.add_axes(ax_rect)
+
+    data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride]) # GPC
 
     # Define the discrete colorbar tick locations
     fill_colours = dataset_options['fill_colours']
@@ -1799,21 +1836,18 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     ppl.setp(ax.get_yticklabels(),fontsize=font_scale*10)
 
     # add a colorbar axis
-    cax_rect = [0.10 , 0.04, 0.78 , 0.05 ] # [left,bottom,width,height]
+    cax_rect = [0.10 , 0.05, 0.78 , 0.05 ] # [left,bottom,width,height]
     cax = fig.add_axes(cax_rect,frameon=False) # setup colorbar axes
 
     # Plot the colorbar.
     cb = fig.colorbar(im, cax=cax, orientation='horizontal')
 
+    # Set the colourbar tick locations and ticklabels
+    tickpos_data_coords = vmax*tickPos
+    cb.set_ticks(tickpos_data_coords) # In data coords...
+    cb.set_ticklabels(dataset_options['tick_names'])
     ppl.setp(cax.get_xticklabels(),fontsize=font_scale*9)
     ppl.setp(cax.get_xticklines(),visible=False)
-
-    # Set the colourbar tick locations and ticklabels
-    #ppl.setp(cb.ax,xticks=CMD.ViirsCMTickPos) # In colorbar axis coords (0..1)
-    tickpos_data_coords = vmax*tickPos
-    cb.set_ticks(tickpos_data_coords) # In data coords (0..3)
-    tick_names = dataset_options['tick_names']
-    ppl.setp(cb.ax,xticklabels=tick_names)
 
     # Colourbar title
     cax_title = ppl.setp(cax,title=cbar_title)
@@ -1845,9 +1879,6 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
 
     glax_rect = [0.85, 0.71, 0.18, 0.18 ] # [left,bottom,width,height]
     glax = fig.add_axes(glax_rect)
-
-    #m_globe = Basemap(lat_0=0.,lon_0=0.,\
-        #ax=glax,resolution='c',area_thresh=10000.,projection='lcc')
 
     LOG.info("scale = {}".format(scale))
     windowWidth = scale *(0.35*12000000.)
@@ -1947,8 +1978,8 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
         elif options.plot_type == 'slice':
             vert_lev_str = "(footprint {})".format(options.footprint)
 
-        plot_style_options['title'] = "{} , {} {}\n{}z".format(
-                dfile_obj.datasets['file_attrs'][filenames[0]]['Mission_Name'],
+        plot_style_options['title'] = "{} , {} {}\n{}Z".format(
+                dfile_obj.datasets['file_attrs'][filenames[0]]['Satellite_Name'],
                 dataset_options['name'],
                 vert_lev_str,
                 dt_image_date.strftime('%Y-%m-%d %H:%M')

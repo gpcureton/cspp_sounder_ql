@@ -97,7 +97,7 @@ from ql_common import plotMapDataContinuous, plotMapDataDiscrete
 from ql_common import set_plot_styles
 from ql_common import set_plot_navigation_bm as set_plot_navigation
 
-import HSRTV
+import sounder_packages
 
 # every module should have a LOG object
 LOG = logging.getLogger(__file__)
@@ -110,7 +110,7 @@ def _argparse():
 
     import argparse
 
-    dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
+    dataChoices=['iapp','mirs','hsrtv','nucaps']
     prodChoices=['temp','temp_gdas','wvap','wvap_gdas','dwpt','relh','relh_gdas',
                  'ctp','ctt','2temp','cold_air_aloft']
     map_res_choice = ['c','l','i']
@@ -640,43 +640,46 @@ def main():
     # Read in the input file, and return a dictionary containing the required
     # data
 
-    dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
+    dataChoices=['iapp','mirs','hsrtv','nucaps']
 
     LOG.info("Input pressure = {}".format(pressure))
     LOG.info("Input elevation = {}".format(elevation))
 
-    #sys.exit(0)
 
-    hsrtv_obj = HSRTV.HSRTV(input_file_list,dataset,plot_type,
-            pres_0=pressure,elev_0=elevation,footprint=footprint)
+    # Get all of the required command line options for the required satellite...
+    sounder_package_cfg = sounder_packages.sounder_package_cfg[datatype]
+    sounder_args = (input_file_list,dataset,plot_type)
+    sounder_kwargs = {'pres_0':pressure,
+                      'elev_0':elevation,
+                      'lat_0':None,
+                      'lon_0':None,
+                      'footprint':footprint
+                      }
+    sounder_obj = sounder_package_cfg(*sounder_args,**sounder_kwargs)
 
-    pres_0 = hsrtv_obj.pres_0
-    elev_0 = hsrtv_obj.elev_0
-    lats = hsrtv_obj.datasets['lat']['data']
-    lons = hsrtv_obj.datasets['lon']['data']
-    data = hsrtv_obj.datasets[dataset]['data']
-    data_mask = hsrtv_obj.datasets[dataset]['data_mask']
+    LOG.info("sounder_obj.pres_0 = {}".format(sounder_obj.pres_0))
+    LOG.info("sounder_obj.elev_0 = {}".format(sounder_obj.elev_0))
+
+    pres_0 = sounder_obj.pres_0
+    elev_0 = sounder_obj.elev_0
+    lats = sounder_obj.datasets['lat']['data']
+    lons = sounder_obj.datasets['lon']['data']
+    data = sounder_obj.datasets[dataset]['data']
+    data_mask = sounder_obj.datasets[dataset]['data_mask']
 
     if plot_type == 'slice':
-        lat_col = hsrtv_obj.datasets['lat_col']['data']
-        lon_col = hsrtv_obj.datasets['lon_col']['data']
-        pressure = hsrtv_obj.pressure
-        options.footprint = hsrtv_obj.col
+        lat_col = sounder_obj.datasets['lat_col']['data']
+        lon_col = sounder_obj.datasets['lon_col']['data']
+        pressure = sounder_obj.pressure
+        options.footprint = sounder_obj.col
         if elevation != None:
-            elevation = hsrtv_obj.datasets['elev_slice']['data']
+            elevation = sounder_obj.datasets['elev_slice']['data']
 
-    #sys.exit(0)
 
-    LOG.debug(hsrtv_obj.datasets['file_attrs'].items())
+    LOG.debug(sounder_obj.datasets['file_attrs'].items())
 
 
     input_file = os.path.basename(input_file_list[0])
-
-    #print 'temp = np.array({})'.format(hsrtv_obj.datasets['temp']['data'][:,0])
-    #print 'wvap = np.array({})'.format(hsrtv_obj.datasets['wvap']['data'][:,0])
-    #print 'temp_gdas = np.array({})'.format(hsrtv_obj.datasets['temp_gdas']['data'][:,0])
-    #print 'relh_gdas = np.array({})'.format(hsrtv_obj.datasets['relh_gdas']['data'][:,0])
-    #print "Hello"
 
     # Get the dataset options
     try:
@@ -688,12 +691,20 @@ def main():
     for key in dataset_options.keys():
         LOG.debug("dataset_options['{}'] = {}".format(key,dataset_options[key]))
 
+    #sys.exit(0)
 
     # Determine the filename
     if dataset=='ctp' or dataset=='ctt' or plot_type=='slice':
-        file_suffix = "{}_{}".format(datatype,dataset)
+        LOG.info("pres_0 = {}".format(pres_0))
+        LOG.info("elev_0 = {}".format(elev_0))
+        vertical_type = "elev" if elev_0 != None else "pres"
+        LOG.info("vertical_type = {}".format(vertical_type))
+        file_suffix = "{}_{}_{}".format(datatype,dataset,vertical_type)
     else:
-        file_suffix = "{}_{}_{}mb".format(datatype,dataset,int(pres_0))
+        if pres_0 != None:
+            file_suffix = "{}_{}_{}mb".format(datatype,dataset,int(pres_0))
+        else:
+            file_suffix = "{}_{}_{}ft".format(datatype,dataset,int(elev_0))
 
     if output_file==None and outputFilePrefix==None :
         output_file = "{}.{}.png".format(input_file,file_suffix)
@@ -707,12 +718,14 @@ def main():
     dataset = options.dataset
 
     # Set the navigation
-    plot_nav_options = set_plot_navigation(lats,lons,hsrtv_obj,options)
+    plot_nav_options = set_plot_navigation(lats,lons,sounder_obj,options)
     for key in plot_nav_options.keys():
         LOG.info("plot_nav_options['{}'] = {}".format(key,plot_nav_options[key]))
 
     # Set the plot styles
-    plot_style_options = set_plot_styles(hsrtv_obj,dataset,dataset_options,options)
+    plot_style_options = set_plot_styles(sounder_obj,dataset,dataset_options,options)
+
+    #sys.exit(0)
 
     # Get pointers to the desired plotting routines
     plot_image = plot_style_options['plot_image']
