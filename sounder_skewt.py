@@ -32,31 +32,10 @@ where...
 
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2014-05-10.
-Copyright (c) 2014 University of Wisconsin Regents. All rights reserved.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+Copyright 2014-2018, University of Wisconsin Regents.
+Licensed under the GNU GPLv3.
 """
-
-file_Date = '$Date: 2015-02-11 22:59:24 -0800 (Wed, 11 Feb 2015) $'
-file_Revision = '$Revision: 2354 $'
-file_Author = '$Author: geoffc $'
-file_HeadURL = '$HeadURL: https://svn.ssec.wisc.edu/repos/jpss_adl/trunk/scripts/iapp/quicklooks/sounder_skewt.py $'
-file_Id = '$Id: sounder_skewt.py 2354 2015-02-12 06:59:24Z geoffc $'
-
-__author__ = 'Geoff Cureton <geoff.cureton@ssec.wisc.edu>'
-__version__ = '$Id: sounder_skewt.py 2354 2015-02-12 06:59:24Z geoffc $'
-__docformat__ = 'Epytext'
 
 import os, sys, logging, traceback
 from os import path,uname,environ
@@ -93,7 +72,8 @@ from netCDF4 import Dataset
 from netCDF4 import num2date
 import h5py
 
-import skewt as skT
+from metpy.plots import SkewT
+import metpy.calc as mpcalc
 from thermo import dewhum
 
 # every module should have a LOG object
@@ -144,6 +124,47 @@ def granuleFiles(prodGlob):
     
     return prodList
 
+def generate_file_list(inputs, full=False):
+    '''
+    Trawl through the files and directories given at the command line, return a list of files.
+    '''
+
+    input_files = []
+
+    for input in inputs:
+        LOG.debug("bash glob input = {}".format(input))
+
+    if full:
+        input_files = list(set(inputs))
+        input_files.sort()
+        return input_files
+
+    input_dirs = []
+    input_files = []
+
+    # Sort the command line inputs into directory and file inputs...
+    for input in inputs:
+        input = os.path.abspath(os.path.expanduser(input))
+        if os.path.isdir(input):
+            # Input file glob is of form "/path/to/files"
+            LOG.debug("Input {} is a directory containing files...".format(input))
+            input_dirs.append(input)
+        elif os.path.isfile(input):
+            # Input file glob is of form "/path/to/files/goes13_1_2015_143_1745.input"
+            LOG.debug("Input {} is a file.".format(input))
+            input_files.append(input)
+
+    input_dirs = list(set(input_dirs))
+    input_dirs.sort()
+    input_files = list(set(input_files))
+    input_files.sort()
+
+    for dirs in input_dirs:
+        LOG.debug("input dirs {}".format(dirs))
+    for files in input_files:
+        LOG.debug("input files {}".format(files))
+
+    return input_files
 
 def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
     '''
@@ -841,14 +862,10 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
 
     return sounding_inputs
 
-
-
 def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options):
-
 
     # Determine the row and column from the input lat and lon and the 
     # supplied geolocation
-
 
     p = sounding_inputs['pres']['data'][::-1]
     rh = sounding_inputs['relh']['data'][::-1]
@@ -862,18 +879,33 @@ def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options)
     td = dewpoint
     fig = optional matplotlib figure
     '''
-    fig,ax,canvas = skT.plot_skewt_OO(p, rh, t, td, **plot_options)
 
-    ax.set_xlabel(plot_options['taxis_label'],fontsize=10)
-    ax.set_ylabel(plot_options['paxis_label'],fontsize=10)
-    ax.set_title(plot_options['title'],fontsize=10)
+    fig = ppl.figure(figsize=(9, 9))
+    skew = SkewT(fig, rotation=30)
 
-    # Redraw the figure
-    canvas.draw()
-    canvas.print_figure(png_name,dpi=dpi)
+    # Plot the data using normal plotting functions, in this case using
+    # log scaling in Y, as dictated by the typical meteorological plot
+    skew.plot(p, t, 'r', label=plot_options['T_legend'])
+    skew.plot(p, td, 'g', label=plot_options['Td_legend'])
+    skew.ax.set_ylim(1000, 100)
+    skew.ax.set_xlim(-40., 45.)
+    skew.ax.legend(fontsize=10)
 
-    return fig,ax
+    # An example of a slanted line at constant T -- in this case the 0
+    # isotherm
+    skew.ax.axvline(0, color='c', linestyle='--', linewidth=2)
 
+    skew.ax.set_xlabel(plot_options['taxis_label'],fontsize=10)
+    skew.ax.set_ylabel(plot_options['paxis_label'],fontsize=10)
+    skew.ax.set_title(plot_options['title'],fontsize=10)
+
+    # Add the relevant special lines
+    skew.plot_dry_adiabats()
+    skew.plot_moist_adiabats()
+    skew.plot_mixing_lines()
+
+    # Save the figure
+    fig.savefig(png_name,dpi=dpi)
 
 def _argparse():
     '''
@@ -887,8 +919,8 @@ def _argparse():
     defaults = {
                 'input_file':None,
                 'datatype':None,
-                'temp_min':-40,
-                'temp_max':40,
+                #'temp_min':-40,
+                #'temp_max':40,
                 'lat_0':None,
                 'lat_0':None,
                 'output_file':None,
@@ -899,7 +931,7 @@ def _argparse():
     description = '''Create a Skew-T plot from input sounder data.'''
 
     usage = "usage: %prog [mandatory args] [options]"
-    version = __version__
+    version = 'CSPP Sounder QL v1.1'
 
     parser = argparse.ArgumentParser(
                                      #version=version,
@@ -912,8 +944,9 @@ def _argparse():
                       action='store',
                       dest='input_file',
                       type=str,
-                      help='''The fully qualified path to a single level-1d input file.'''
-                      )
+                      nargs='*',
+                      help = '''One or more input files.'''
+    )
 
     parser.add_argument(
                       action="store",
@@ -929,21 +962,21 @@ def _argparse():
 
     # Optional arguments 
 
-    parser.add_argument('--temp_min',
-                      action="store",
-                      dest="temp_min",
-                      type=float,
-                      help='''Minimum temperature value to plot.
-                      [default: {} deg C]'''.format(defaults["temp_min"])
-                      )
+    #parser.add_argument('--temp_min',
+                      #action="store",
+                      #dest="temp_min",
+                      #type=float,
+                      #help='''Minimum temperature value to plot.
+                      #[default: {} deg C]'''.format(defaults["temp_min"])
+                      #)
 
-    parser.add_argument('--temp_max',
-                      action="store",
-                      dest="temp_max",
-                      type=float,
-                      help='''Maximum temperature value to plot.
-                      [default: {} deg C]'''.format(defaults["temp_max"])
-                      )
+    #parser.add_argument('--temp_max',
+                      #action="store",
+                      #dest="temp_max",
+                      #type=float,
+                      #help='''Maximum temperature value to plot.
+                      #[default: {} deg C]'''.format(defaults["temp_max"])
+                      #)
 
     parser.add_argument('-d','--dpi',
                       action="store",
@@ -1028,16 +1061,16 @@ def main():
 
     input_file = options.input_file
     datatype = options.datatype
-    temp_min = options.temp_min
-    temp_max = options.temp_max
+    #temp_min = options.temp_min
+    #temp_max = options.temp_max
     lat_0  = options.lat_0
     lon_0  = options.lon_0
     output_file  = options.output_file
     outputFilePrefix  = options.outputFilePrefix
     dpi = options.dpi
 
-    # Obtain matched lists of the geolocation and product files
-    input_file_list = granuleFiles(input_file)
+    # Obtain list of the product files
+    input_file_list = generate_file_list(input_file)
 
     if input_file_list==[]:
         LOG.warn('No files match the input file glob "{}", aborting.'

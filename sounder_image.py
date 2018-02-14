@@ -34,31 +34,10 @@ where...
 
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2014-05-10.
-Copyright (c) 2014 University of Wisconsin Regents. All rights reserved.
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+Copyright 2014-2018, University of Wisconsin Regents.
+Licensed under the GNU GPLv3.
 """
-
-file_Date = '$Date: 2015-02-11 22:59:24 -0800 (Wed, 11 Feb 2015) $'
-file_Revision = '$Revision: 2354 $'
-file_Author = '$Author: geoffc $'
-file_HeadURL = '$HeadURL: https://svn.ssec.wisc.edu/repos/jpss_adl/trunk/scripts/iapp/quicklooks/sounder_image.py $'
-file_Id = '$Id: sounder_image.py 2354 2015-02-12 06:59:24Z geoffc $'
-
-__author__ = 'Geoff Cureton <geoff.cureton@ssec.wisc.edu>'
-__version__ = '$Id: sounder_image.py 2354 2015-02-12 06:59:24Z geoffc $'
-__docformat__ = 'Epytext'
 
 import os, sys, logging, traceback
 from os import path,uname,environ
@@ -69,6 +48,7 @@ from shutil import rmtree,copyfile
 from glob import glob
 from time import time
 from datetime import datetime,timedelta
+import warnings
 
 import numpy as np
 from numpy import ma
@@ -87,6 +67,10 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 # This must come *after* the backend is specified.
 import matplotlib.pyplot as ppl
 
+# Mute Matplotlib deprecation warnings
+import matplotlib.cbook
+warnings.filterwarnings("ignore",category=matplotlib.cbook.mplDeprecation)
+
 from mpl_toolkits.basemap import Basemap
 
 import scipy.spatial as ss
@@ -99,7 +83,6 @@ from thermo import dewhum
 
 # every module should have a LOG object
 LOG = logging.getLogger(__file__)
-
 
 def uwyoming():
     sounding = SkewT.Sounding(filename="sounding.txt")
@@ -145,6 +128,47 @@ def granuleFiles(prodGlob):
     
     return prodList
 
+def generate_file_list(inputs, full=False):
+    '''
+    Trawl through the files and directories given at the command line, return a list of files.
+    '''
+
+    input_files = []
+
+    for input in inputs:
+        LOG.debug("bash glob input = {}".format(input))
+
+    if full:
+        input_files = list(set(inputs))
+        input_files.sort()
+        return input_files
+
+    input_dirs = []
+    input_files = []
+
+    # Sort the command line inputs into directory and file inputs...
+    for input in inputs:
+        input = os.path.abspath(os.path.expanduser(input))
+        if os.path.isdir(input):
+            # Input file glob is of form "/path/to/files"
+            LOG.debug("Input {} is a directory containing files...".format(input))
+            input_dirs.append(input)
+        elif os.path.isfile(input):
+            # Input file glob is of form "/path/to/files/goes13_1_2015_143_1745.input"
+            LOG.debug("Input {} is a file.".format(input))
+            input_files.append(input)
+
+    input_dirs = list(set(input_dirs))
+    input_dirs.sort()
+    input_files = list(set(input_files))
+    input_files.sort()
+
+    for dirs in input_dirs:
+        LOG.debug("input dirs {}".format(dirs))
+    for files in input_files:
+        LOG.debug("input files {}".format(files))
+
+    return input_files
 
 def get_pressure_index(pressure,pres_0=850.,kd_dist=10.):
     '''
@@ -353,13 +377,14 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
                     label,sounding_inputs[label]['data'].shape))
 
             # Add to the ctp and   ctt and data arrays...
+            cloud_top_qc = {'ctp':0., 'ctt':0.}
             for label in ['ctp','ctt']:
                 try :
                     sounding_inputs[label]['data']  = np.vstack((
-                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:,4]))
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:,5]))
                     LOG.debug("subsequent arrays...")
                 except KeyError :
-                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:,4]
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:,5]
                     LOG.debug("first arrays...")
 
                 LOG.debug("Intermediate {} shape = {}".format(
@@ -402,8 +427,8 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
             LOG.debug(">>> Processing {} ..."
                     .format(sounding_inputs[label]['dset_name']))
             fill_value = sounding_inputs[label]['_FillValue']
-            #data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
-            data = ma.masked_equal(sounding_inputs[label]['data'],np.nan)
+            data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
+            #data = ma.masked_equal(sounding_inputs[label]['data'],np.nan)
             LOG.debug("ma.is_masked({}) = {}".format(label,ma.is_masked(data)))
 
             if ma.is_masked(data):
@@ -418,6 +443,12 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
                     format(np.sum(data_mask),data.size,label))
 
             sounding_inputs[label]['mask'] = data_mask
+
+    # Some extra sanity checking on the CTT and CTP dataets
+    cloud_top_qc = {'ctp':0., 'ctt':150.}
+    for label in ['ctp','ctt']:
+        sounding_inputs[label]['mask'] += ma.masked_less(sounding_inputs[label]['data'], cloud_top_qc[label]).mask
+    sounding_inputs['ctp']['mask'] += sounding_inputs['ctt']['mask']
 
     # Computing the relative humidity
     sounding_inputs['relh'] = {}
@@ -441,6 +472,9 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
 
     LOG.debug("ma.is_masked({}) = {}".format('relh',ma.is_masked(rh)))
     LOG.debug("There are {}/{} masked values in relh".format(np.sum(rh.mask),rh.size))
+
+    # Implement dummy QC mask
+    sounding_inputs['qc'] = {'mask':np.zeros(data_mask.shape,dtype='bool')}
 
     return sounding_inputs
 
@@ -469,6 +503,9 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
     float PVapor(Scanline, Field_of_view, P_Layer) ;
             PVapor:long_name = "Water vapor profile in g/kg" ;
             PVapor:scale = 1. ;
+
+    short Qc(Scanline, Field_of_view, Qc_dim) ;
+            Qc:description = "Qc(0): 0-good,1-usable with problem ,2-bad" ;
     '''         
 
     data_labels = [
@@ -478,7 +515,8 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
                     'wvap',
                     'relh',
                     'lat',
-                    'lon'
+                    'lon',
+                    'qc'
                     ]
 
     sounding_inputs = {}
@@ -490,6 +528,7 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
     sounding_inputs['wvap']['dset_name'] = 'PVapor'
     sounding_inputs['lat']['dset_name']  = 'Latitude'
     sounding_inputs['lon']['dset_name']  = 'Longitude'
+    sounding_inputs['qc']['dset_name']  = 'Qc'
     sounding_inputs['dwpt'] = None
     sounding_inputs['relh'] = None
 
@@ -514,6 +553,7 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
             sounding_inputs['wvap']['node'] = fileObj.variables['PVapor']
             sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
             sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
+            sounding_inputs['qc']['node'] = fileObj.variables['Qc']
 
             # Fill in some missing attributes
             fill_value = getattr(fileObj,'missing_value')
@@ -584,6 +624,18 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
                 LOG.debug("Intermediate {} shape = {}".format(
                     label,sounding_inputs[label]['data'].shape))
 
+            for label in ['qc']:
+                try :
+                    sounding_inputs[label]['data']  = np.vstack((
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:,0]))
+                    LOG.debug("subsequent arrays...")
+                except KeyError :
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:,0]
+                    LOG.debug("first arrays...")
+
+                LOG.debug("Intermediate {} shape = {}".format(
+                    label,sounding_inputs[label]['data'].shape))
+
             first_granule = False
 
             LOG.info("Closing {}".format(mirs_file))
@@ -622,6 +674,44 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
                     format(np.sum(data_mask),data.size,label))
 
             sounding_inputs[label]['mask'] = data_mask
+
+    # Contruct the QC mask
+    for label in ['qc']:
+        if sounding_inputs[label] != None:
+            LOG.debug(">>> Processing {} ..."
+                    .format(sounding_inputs[label]['dset_name']))
+            fill_value = sounding_inputs[label]['_FillValue']
+            data_fill = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
+            data_qc = ma.masked_greater(sounding_inputs[label]['data'],0)
+            LOG.debug("{} has fill: {}".format(label,ma.is_masked(data_fill)))
+            LOG.debug("{} has QC flag: {}".format(label,ma.is_masked(data_qc)))
+
+            if ma.is_masked(data_fill):
+                if data_fill.mask.shape == ():
+                    data_fill_mask = np.ones(data_fill.shape,dtype='bool')
+                else:
+                    data_fill_mask = data_fill.mask
+            else: 
+                data_fill_mask = np.zeros(data_fill.shape,dtype='bool')
+
+            LOG.debug("There are {}/{} fill values in {}".\
+                    format(np.sum(data_fill_mask),data_fill.size,label))
+
+            if ma.is_masked(data_qc):
+                if data_qc.mask.shape == ():
+                    data_qc_mask = np.ones(data_qc.shape,dtype='bool')
+                else:
+                    data_qc_mask = data_qc.mask
+            else: 
+                data_qc_mask = np.zeros(data_qc.shape,dtype='bool')
+
+            LOG.debug("There are {}/{} qc values in {}".\
+                    format(np.sum(data_qc_mask),data_qc.size,label))
+
+            sounding_inputs[label]['mask'] = data_fill_mask + data_qc_mask
+
+            LOG.debug("There are {}/{} masked values in total {}".format(
+                np.sum(sounding_inputs[label]['mask']),sounding_inputs[label]['data'].size, label))
 
     # Computing the dewpoint temperature and relative humidity
     sounding_inputs['dwpt'] = {}
@@ -897,6 +987,8 @@ def hsrtv_sounder(dr_file_list,pres_0=850.):
         LOG.debug("ma.is_masked({}) = {}".format('relh',ma.is_masked(rh)))
         LOG.debug("There are {}/{} masked values in relh".format(np.sum(rh.mask),rh.size))
 
+    # Implement dummy QC mask
+    sounding_inputs['qc'] = {'mask':np.zeros(data_mask.shape,dtype='bool')}
 
     return sounding_inputs
 
@@ -958,6 +1050,17 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
             Cloud_Top_Pressure:valid_range = 0.f, 10000.f ;
             Cloud_Top_Pressure:_FillValue = -9999.f ;
 
+    int Quality_Flag(Number_of_CrIS_FORs) ;
+            Quality_Flag:long_name = "Quality flags for retrieval" ;
+            Quality_Flag:parameter_type = "NUCAPS data" ;
+            Quality_Flag:coordinates = "Time Latitude Longitude" ;
+            Quality_Flag:valid_range = 0, 31 ;
+            Quality_Flag:_FillValue = -9999 ;
+            Quality_Flag:flag_values = 0, 1, 2, 4, 8, 9, 16, 17, 24, 25 ;
+            Quality_Flag:flag_meanings = "accepted reject_physical reject_MIT reject_NOAA_reg 
+                                          reject_iMIT reject_phy_and_iMIT reject_iNOAA 
+                                          reject_phy_and_iNOAA reject_iMIT_and_iNOAA 
+                                          reject_phy_and_iMIT_and_iNOAA" ;
     '''         
 
     data_labels = [
@@ -967,7 +1070,8 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
                     'wvap',
                     'relh',
                     'lat',
-                    'lon'
+                    'lon',
+                    'qc'
                     ]
 
     sounding_inputs = {}
@@ -979,6 +1083,7 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
     sounding_inputs['wvap']['dset_name'] = 'H2O_MR'
     sounding_inputs['lat']['dset_name']  = 'Latitude'
     sounding_inputs['lon']['dset_name']  = 'Longitude'
+    sounding_inputs['qc']['dset_name']  = 'Quality_Flag'
     sounding_inputs['dwpt'] = None
     sounding_inputs['relh'] = None
 
@@ -1004,6 +1109,7 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
             sounding_inputs['wvap']['node'] = fileObj.variables['H2O_MR']
             sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
             sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
+            sounding_inputs['qc']['node'] = fileObj.variables['Quality_Flag']
 
             # Fill in some missing attributes
             sounding_inputs['pres']['units'] = 'hPa'
@@ -1074,6 +1180,18 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
                 LOG.debug("Intermediate {} shape = {}".format(
                     label,sounding_inputs[label]['data'].shape))
 
+            for label in ['qc']:
+                try :
+                    sounding_inputs[label]['data']  = np.vstack((
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:].reshape(4,30)))
+                    LOG.debug("subsequent arrays...")
+                except KeyError :
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:].reshape(4,30)
+                    LOG.debug("first arrays...")
+
+                LOG.debug("Intermediate {} shape = {}".format(
+                    label,sounding_inputs[label]['data'].shape))
+
             first_granule = False
 
             LOG.info("Closing {}".format(nucaps_file))
@@ -1118,6 +1236,44 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
 
             sounding_inputs[label]['mask'] = data_mask
 
+    # Contruct the QC mask
+    for label in ['qc']:
+        if sounding_inputs[label] != None:
+            LOG.debug(">>> Processing {} ..."
+                    .format(sounding_inputs[label]['dset_name']))
+            fill_value = sounding_inputs[label]['_FillValue']
+            data_fill = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
+            data_qc = ma.masked_greater(sounding_inputs[label]['data'],0)
+            LOG.debug("{} has fill: {}".format(label,ma.is_masked(data_fill)))
+            LOG.debug("{} has QC flag: {}".format(label,ma.is_masked(data_qc)))
+
+            if ma.is_masked(data_fill):
+                if data_fill.mask.shape == ():
+                    data_fill_mask = np.ones(data_fill.shape,dtype='bool')
+                else:
+                    data_fill_mask = data_fill.mask
+            else: 
+                data_fill_mask = np.zeros(data_fill.shape,dtype='bool')
+
+            LOG.debug("There are {}/{} fill values in {}".\
+                    format(np.sum(data_fill_mask),data_fill.size,label))
+
+            if ma.is_masked(data_qc):
+                if data_qc.mask.shape == ():
+                    data_qc_mask = np.ones(data_qc.shape,dtype='bool')
+                else:
+                    data_qc_mask = data_qc.mask
+            else: 
+                data_qc_mask = np.zeros(data_qc.shape,dtype='bool')
+
+            LOG.debug("There are {}/{} qc values in {}".\
+                    format(np.sum(data_qc_mask),data_qc.size,label))
+
+            sounding_inputs[label]['mask'] = data_fill_mask + data_qc_mask
+
+            LOG.debug("There are {}/{} masked values in total {}".format(
+                np.sum(sounding_inputs[label]['mask']),sounding_inputs[label]['data'].size, label))
+
     # Computing the dewpoint temperature and relative humidity
     sounding_inputs['dwpt'] = {}
     sounding_inputs['relh'] = {}
@@ -1136,8 +1292,7 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
 
     # Copy dewpoint temperature to output
     sounding_inputs['dwpt']['data'] = dwpt
-    sounding_inputs['dwpt']['mask'] = dwpt.mask if  ma.is_masked(dwpt) \
-            else np.zeros(dwpt.shape,dtype='bool')
+    sounding_inputs['dwpt']['mask'] = dwpt.mask if  ma.is_masked(dwpt) else np.zeros(dwpt.shape,dtype='bool')
     sounding_inputs['dwpt']['units'] = 'K'
     sounding_inputs['dwpt']['long_name'] = 'Dew-point Temperature in K'
 
@@ -1146,8 +1301,7 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
 
     # Copy relative humidity to output
     sounding_inputs['relh']['data'] = rh
-    sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
-            else np.zeros(rh.shape,dtype='bool')
+    sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) else np.zeros(rh.shape,dtype='bool')
     sounding_inputs['relh']['units'] = '%'
     sounding_inputs['relh']['long_name'] = 'Relative Humidity'
 
@@ -1402,10 +1556,10 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
 
     if doScatterPlot:
         cs = m.scatter(x,y,s=pointSize,c=data,axes=ax,edgecolors='none',
-                vmin=plotMin,vmax=plotMax)
+                vmin=plotMin,vmax=plotMax, cmap=cm.jet)
     else:
         cs = m.pcolor(x,y,data,axes=ax,edgecolors='none',antialiased=False,
-                vmin=plotMin,vmax=plotMax)
+                vmin=plotMin,vmax=plotMax, cmap=cm.jet)
 
     txt = ax.set_title(title,fontsize=11)
 
@@ -1526,7 +1680,7 @@ def _argparse():
                      and NUCAPS files.'''
 
     usage = "usage: %prog [mandatory args] [options]"
-    version = __version__
+    version = 'CSPP Sounder QL v1.1'
 
     parser = argparse.ArgumentParser(
                                      #version=version,
@@ -1539,9 +1693,9 @@ def _argparse():
                       action='store',
                       dest='input_file',
                       type=str,
-                      help='''The fully qualified path to the input file(s). May 
-                              be a file glob (which should be in quotes).'''
-                      )
+                      nargs='*',
+                      help = '''One or more input files.'''
+    )
 
     parser.add_argument(
                       action="store",
@@ -1807,8 +1961,8 @@ def main():
     outputFilePrefix  = options.outputFilePrefix
     dpi = options.dpi
 
-    # Obtain matched lists of the geolocation and product files
-    input_file_list = granuleFiles(input_file)
+    # Obtain list of the product files
+    input_file_list = generate_file_list(input_file)
 
     if input_file_list==[]:
         LOG.warn('No files match the input file glob "{}", aborting.'
@@ -1837,8 +1991,10 @@ def main():
     lats = sounding_inputs['lat']['data']
     lons = sounding_inputs['lon']['data']
     data = sounding_inputs[dataset]['data']
-    data_mask = sounding_inputs[dataset]['mask']
+    data_mask = sounding_inputs[dataset]['mask'] + sounding_inputs['qc']['mask']
     units = sounding_inputs[dataset]['units']
+
+    LOG.debug("There are {}/{} masked values in {}".format(np.sum(data_mask),data.size, dataset))
 
     pres_0 = int(sounding_inputs['pres_0'])
 
