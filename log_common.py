@@ -1,34 +1,30 @@
 #!/usr/bin/env python
 # encoding: utf-8
 """
-$Id: adl_common.py 1931 2014-03-17 18:43:26Z kathys $
+log_common.py
 
-Purpose: Common routines for ADL XDR handling and ancillary data caching.
-
-Requires: adl_asc
+ * DESCRIPTION: Various routines for setting up logging.
 
 Created Oct 2011 by R.K.Garcia <rayg@ssec.wisc.edu>
 Copyright (c) 2011 University of Wisconsin Regents.
 Licensed under GNU GPLv3.
 """
 
-import os, sys, logging
-import basics
+import sys
+import logging
+from cffi import FFI
 
-import __main__
-
-#from cffi import FFI
-#ffi = FFI()
-
-ffi = None
+ffi = FFI()
 
 LOG = logging.getLogger(__name__)
 
 logging_configured = False
 
 
-# ref: http://stackoverflow.com/questions/1383254/logging-streamhandler-and-standard-streams
 class SingleLevelFilter(logging.Filter):
+    '''
+    ref: http://stackoverflow.com/questions/1383254/logging-streamhandler-and-standard-streams
+    '''
     def __init__(self, passlevels, reject):
         self.passlevels = set(passlevels)
         self.reject = reject
@@ -49,20 +45,21 @@ def configure_logging(level=logging.WARNING, FILE=None):
     # create a formatter to be used across everything
     #fm = logging.Formatter('%(levelname)s:%(name)s:%(msg)s') # [%(filename)s:%(lineno)d]')
 
-    ### Orig
+    # Orig
     #fm = logging.Formatter('(%(levelname)s):%(filename)s:%(funcName)s:%(lineno)d:%(message)s')
 
-    if level == logging.DEBUG :
-        fm = logging.Formatter('%(asctime)s.%(msecs)03d (%(levelname)s) : %(filename)s : %(funcName)s : %(lineno)d:%(message)s',\
-                datefmt='%Y-%m-%d %H:%M:%S')
+    if level == logging.DEBUG:
+        fm = logging.Formatter(
+            '%(asctime)s.%(msecs)03d (%(levelname)s) : %(filename)s : %(funcName)s :' +
+            '%(lineno)d:%(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     else:
-        fm = logging.Formatter('%(asctime)s.%(msecs)03d (%(levelname)s) : %(message)s',\
-                datefmt='%Y-%m-%d %H:%M:%S')
+        fm = logging.Formatter('%(asctime)s.%(msecs)03d (%(levelname)s) : %(message)s',
+                               datefmt='%Y-%m-%d %H:%M:%S')
 
     rootLogger = logging.getLogger()
 
     # set up the default logging
-    if logging_configured == False:
+    if logging_configured is False:
         logging_configured = True
 
         # create a handler which routes info and debug to stdout with std formatting
@@ -81,8 +78,7 @@ def configure_logging(level=logging.WARNING, FILE=None):
 
     h3 = None
     if FILE is not None:
-        work_dir = os.path.dirname(FILE)
-        basics.check_and_convert_path("WORKDIR", work_dir, check_write=True)
+        #work_dir = os.path.dirname(FILE)
         h3 = logging.FileHandler(filename=FILE)
         #        f3 = SingleLevelFilter([logging.INFO, logging.DEBUG], False)
         #        h3.addFilter(f3)
@@ -96,9 +92,7 @@ def status_line(status):
     """
     Put out a special status line
     """
-
-
-    LOG.info('\n                 ( %s )\n'%status)
+    LOG.info('\n                 ( %s )\n' % status)
 
 
 def log_from_C(in_type, in_msg):
@@ -140,7 +134,7 @@ def C_log_support(ffi_in):
     int LOG_warn( char *message);
     int LOG_debug( char *message);
     int LOG_error( char *message);
-    """ )
+    """)
 
     log_lib = ffi.dlopen("liblog_common_cb.so")
     log_callback = ffi.callback("int(char*,char *)", log_from_C)
@@ -180,4 +174,3 @@ if __name__ == '__main__':
 
     C_log_support()
 #    test_C_callbacks()
-

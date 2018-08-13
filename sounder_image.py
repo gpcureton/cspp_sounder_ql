@@ -34,35 +34,25 @@ where...
 
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2014-05-10.
-Copyright (c) 2014 University of Wisconsin Regents. All rights reserved.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+Copyright (c) 2018 University of Wisconsin Regents.
+Licensed under GNU GPLv3.
 """
 
 import os
 import sys
 import logging
 import traceback
-import string
-import re
-import uuid
-from shutil import rmtree, copyfile
-from glob import glob
-from time import time
-from datetime import datetime, timedelta
+from cffi import FFI
 
-import log_common
+#import string
+#import re
+#import uuid
+#from shutil import rmtree, copyfile
+#from glob import glob
+#from time import time
+#from datetime import datetime, timedelta
+
+from args import argument_parser_image
 
 import numpy as np
 from numpy import ma
@@ -102,536 +92,50 @@ import sounder_packages
 # every module should have a LOG object
 LOG = logging.getLogger(__file__)
 
-
-def _argparse():
-    '''
-    Method to encapsulate the option parsing and various setup tasks.
-    '''
-
-    import argparse
-
-    dataChoices=['iapp','mirs','hsrtv','nucaps']
-    prodChoices=['temp','temp_gdas','wvap','wvap_gdas','dwpt','relh','relh_gdas',
-                 'ctp','ctt','2temp','cold_air_aloft']
-    map_res_choice = ['c','l','i']
-    plot_type_choice = ['image','slice']
-    map_proj_choice = {
-                       'cea':     'Cylindrical Equal Area',
-                       'lcc':     'Lambert Conformal',
-                       'ortho':   'Orthographic',
-                       'geos':    'Geostationary',
-                       'npstere': 'North-Polar Stereographic',
-                       'spstere': 'South-Polar Stereographic',
-                       'cyl':     'Cylindrical Equidistant',
-                       'sinu':    'Sinusoidal',
-                       'merc':    'Mercator'
-                       #'mbtfpq':  'McBryde-Thomas Flat-Polar Quartic',
-                       #'poly':    'Polyconic',
-                       #'moll':    'Mollweide',
-                       #'tmerc':   'Transverse Mercator',
-                       #'gall':    'Gall Stereographic Cylindrical',
-                       #'mill':    'Miller Cylindrical',
-                       #'stere':   'Stereographic',
-                       #'eqdc':    'Equidistant Conic',
-                       ##'rotpole': 'Rotated Pole',
-                       #'hammer':  'Hammer',
-                       #'nsper':   'Near-Sided Perspective',
-                       #'eck4':    'Eckert IV',
-                       #'aea':     'Albers Equal Area',
-                       #'kav7':    'Kavrayskiy VII',
-                       #'nplaea':  'North-Polar Lambert Azimuthal',
-                       #'splaea':  'South-Polar Lambert Azimuthal',
-                       #'npaeqd':  'North-Polar Azimuthal Equidistant',
-                       #'spaeqd':  'South-Polar Azimuthal Equidistant',
-                       #'cass':    'Cassini-Soldner',
-                       #'laea':    'Lambert Azimuthal Equal Area',
-                       #'robin':   'Robinson'
-                       }
-
-
-    #defaults = {
-                #'input_file':None,
-                #'datatype':None,
-                #'dataset':'temp',
-                #'stride':1,
-                #'pressure':850.,
-                #'lat_0':None,
-                #'lat_0':None,
-                #'plotMin'  : None,
-                #'plotMax'  : None,
-                #'bounding_lat':0.,
-                #'scatter_plot':False,
-                #'pointSize':1,
-                #'scale':1,
-                #'map_res':'c',
-                #'proj':'lcc',
-                #'output_file':None,
-                #'outputFilePrefix' : None,
-                #'dpi':200
-                #}
-
-    defaults = {
-                'image_size' : [7.5, 7.5],
-                'cbar_axis' : [0.10 , 0.05, 0.8 , 0.05],
-                'cmap':None,
-                'dataset':'temp',
-                'datatype':None,
-                'dpi':200,
-                'font_scale':1.,
-                'input_file':None,
-                'bounding_lat':0.,
-                'lat_0':None,
-                'lon_0':None,
-                'llcrnrx':None,
-                'llcrnry':None,
-                'urcrnrx':None,
-                'urcrnry':None,
-                'map_axis' : [0.10, 0.15, 0.80, 0.8],
-                'map_res':'c',
-                'output_file':None,
-                'outputFilePrefix' : None,
-                'plotMax'  : None,
-                'plotMin'  : None,
-                'yMax'  : None,
-                'yMin'  : None,
-                'plot_type'  : 'image',
-                'pointSize':1,
-                'pressure':None,
-                'elevation':None,
-                'proj':'lcc',
-                'scale':1,
-                'scatter_plot':False,
-                'stride':1,
-                'unnavigated':False
-                }
-
-
-
-    description = '''Create a plot of temperature, dewpoint or something
-                     else at a particular pressure or elevation level. Supports IAPP, MIRS, HSRTV
-                     and NUCAPS files.'''
-
-    usage = "usage: %prog [mandatory args] [options]"
-    version = "v1.0"
-
-    parser = argparse.ArgumentParser(
-                                     #version=version,
-                                     description=description
-                                     )
-
-    # Mandatory/positional arguments
-
-    parser.add_argument(
-                      action='store',
-                      dest='input_file',
-                      type=str,
-                      help='''The fully qualified path to the input file(s). May
-                              be a file glob (which should be in quotes).'''
-                      )
-
-    parser.add_argument(
-                      action="store",
-                      dest="datatype",
-                      default=defaults["datatype"],
-                      type=str,
-                      choices=dataChoices,
-                      help='''The type of the input sounder data file.\n\n
-                              Possible values are...
-                              {}.
-                           '''.format(dataChoices.__str__()[1:-1])
-                      )
-
-    # Optional arguments
-
-    parser.add_argument('--dset',
-                      action="store",
-                      dest="dataset",
-                      default=defaults["dataset"],
-                      type=str,
-                      choices=prodChoices,
-                      help='''The sounder dataset to plot.
-                              Possible values are...
-                              {}.
-                              [default: {}]
-                           '''.format(prodChoices.__str__()[1:-1],
-                               defaults["dataset"])
-                      )
-
-    parser.add_argument('-S','--stride',
-                      action="store",
-                      dest="stride",
-                      default=defaults["stride"],
-                      type=int,
-                      help='''Sample every STRIDE pixels in the band data.
-                      [default: {}]'''.format(defaults["stride"])
-                      )
-
-    parser.add_argument('--pressure',
-                      action="store",
-                      dest="pressure",
-                      default=defaults["pressure"],
-                      type=float,
-                      help='''The pressure level (in mbar) to plot [default: {}].
-                      Mutually exclusive with --elevation.'''.format(defaults["pressure"])
-                      )
-
-    parser.add_argument('--elevation',
-                      action="store",
-                      dest="elevation",
-                      default=defaults["elevation"],
-                      type=float,
-                      help='''The elevation level (in feet) to plot [default: {}].
-                      Mutually exclusive with --pressure.'''.format(defaults["elevation"])
-                      )
-
-    parser.add_argument('--plotMin',
-                      action="store",
-                      dest="plotMin",
-                      default=defaults["plotMin"],
-                      type=float,
-                      help="Minimum value to plot.".format(defaults["plotMin"])
-                      )
-
-    parser.add_argument('--plotMax',
-                      action="store",
-                      dest="plotMax",
-                      default=defaults["plotMax"],
-                      type=float,
-                      help="Maximum value to plot.".format(defaults["plotMax"])
-                      )
-
-    parser.add_argument('-d','--dpi',
-                      action="store",
-                      dest="dpi",
-                      default='200.',
-                      type=float,
-                      help='''The resolution in dots per inch of the output
-                      png file.
-                      [default: {}]'''.format(defaults["dpi"])
-                      )
-
-    parser.add_argument('--lat_0',
-                      action="store",
-                      dest="lat_0",
-                      type=float,
-                      help="Center latitude of plot."
-                      )
-
-    parser.add_argument('--lon_0',
-                      action="store",
-                      dest="lon_0",
-                      type=float,
-                      help="Center longitude of plot."
-                      )
-
-    parser.add_argument('--latMin',
-                      action="store",
-                      dest="latMin",
-                      type=float,
-                      help="Minimum latitude to plot."
-                      )
-
-    parser.add_argument('--latMax',
-                      action="store",
-                      dest="latMax",
-                      type=float,
-                      help="Maximum latitude to plot."
-                      )
-
-    parser.add_argument('--lonMin',
-                      action="store",
-                      dest="lonMin",
-                      type=float,
-                      help="Minimum longitude to plot."
-                      )
-
-    parser.add_argument('--lonMax',
-                      action="store",
-                      dest="lonMax",
-                      type=float,
-                      help="Maximum longitude to plot."
-                      )
-
-    parser.add_argument('--yMin',
-                      action="store",
-                      dest="yMin",
-                      type=float,
-                      help="Minimum y-axis limit on slice plots."
-                      )
-
-    parser.add_argument('--yMax',
-                      action="store",
-                      dest="yMax",
-                      type=float,
-                      help="Maximum y-axis limit on slice plots."
-                      )
-
-    parser.add_argument('--footprint',
-                      action="store",
-                      dest="footprint",
-                      type=int,
-                      help='''The cross-track footprint to use when plotting a
-                      profile slice.'''
-                      )
-
-    parser.add_argument('--bounding_lat',
-                      action="store",
-                      dest="bounding_lat",
-                      default=defaults["bounding_lat"],
-                      type=float,
-                      help='''The minimum/maximum latitude to plot for the polar projections.
-                      [default: {}]'''.format(defaults["bounding_lat"])
-                      )
-
-    parser.add_argument('--viewport',
-                      action="store",
-                      dest="viewport",
-                      type=float,
-                      nargs=4,
-                      metavar=('LLCRNRX', 'LLCRNRY', 'URCRNRX', 'URCRNRY'),
-                      help="""Lower-left and upper-right coordinates
-                      [*llcrnrx*, *llcrnry*, *urcrnrx*, *urcrnry*] of the projection
-                      viewport, in the range [-0.5,+0.5] (for navigated plots only)"""
-                      )
-
-    parser.add_argument('--image_size',
-                      action="store",
-                      dest="image_size",
-                      default=defaults["image_size"],
-                      type=float,
-                      nargs=2,
-                      metavar=('WIDTH', 'HEIGHT'),
-                      help="""The size of the output image [*width*, *height*]
-                      in inches. [default: '{}']""".format(defaults["image_size"])
-                      )
-
-    parser.add_argument('--map_axis',
-                      action="store",
-                      dest="map_axis",
-                      default=defaults["map_axis"],
-                      type=float,
-                      nargs=4,
-                      metavar=('LEFT', 'BOTTOM', 'WIDTH', 'HEIGHT'),
-                      help="""Set the map axes at position [*left*, *bottom*, *width*, *height*]
-                      where all quantities are in fractions of figure width and height.
-                      [default: '{}']""".format(defaults["map_axis"])
-                      )
-
-    parser.add_argument('--cbar_axis',
-                      action="store",
-                      dest="cbar_axis",
-                      default=defaults["cbar_axis"],
-                      type=float,
-                      nargs=4,
-                      metavar=('LEFT', 'BOTTOM', 'WIDTH', 'HEIGHT'),
-                      help="""Set the colorbar axes at position [*left*, *bottom*, *width*, *height*]
-                      where all quantities are in fractions of figure width and height.
-                      [default: '{}']""".format(defaults["cbar_axis"])
-                      )
-
-    parser.add_argument('--scatter_plot',
-                      action="store_true",
-                      dest="doScatterPlot",
-                      default=defaults["scatter_plot"],
-                      help="Generate the plot using a scatterplot approach."
-                      )
-
-    parser.add_argument('--logscale',
-                      action="store_true",
-                      dest="logscale",
-                      help="""Plot the dataset using a logarithmic scale."""
-                      )
-
-    parser.add_argument('--no_logscale',
-                      action="store_true",
-                      dest="no_logscale",
-                      help="""Plot the dataset using a linear scale."""
-                      )
-
-    parser.add_argument('-P','--pointSize',
-                      action="store",
-                      dest="pointSize",
-                      default=defaults["pointSize"],
-                      type=float,
-                      help='''Size of the plot point used to represent each pixel.
-                      [default: {}]'''.format(defaults["pointSize"])
-                      )
-
-    parser.add_argument('--font_scale',
-                      action="store",
-                      dest="font_scale",
-                      default=defaults["font_scale"],
-                      type=float,
-                      help='''The scale factor to apply to the default font size
-                      for the plot labels. [default: {}]'''.format(defaults["font_scale"])
-                      )
-
-    parser.add_argument('--cmap',
-                      action="store",
-                      dest="cmap",
-                      default=defaults["cmap"],
-                      type=str,
-                      help="""The matplotlib colormap to use.
-                      [default: '{}']""".format(defaults["cmap"])
-                      )
-
-    parser.add_argument('--plot_type',
-                      action="store",
-                      dest="plot_type",
-                      default=defaults["plot_type"],
-                      type=str,
-                      choices=plot_type_choice,
-                      help='''The type of plot. Possible values are {}.'''.format(
-                          plot_type_choice.__str__()[1:-1])
-                      )
-
-    parser.add_argument('--plot_title',
-                      action="store",
-                      dest="plot_title",
-                      type=str,
-                      help='''The plot title. Must be placed in double quotes.
-                      '''
-                      )
-
-    parser.add_argument('--cbar_title',
-                      action="store",
-                      dest="cbar_title",
-                      type=str,
-                      help='''The colourbar title. Must be placed in double quotes.
-                      '''
-                      )
-
-    parser.add_argument('-s','--scale',
-                      action="store",
-                      dest="scale",
-                      default=defaults["scale"],
-                      type=float,
-                      help='''The scaling factor for the default viewport size
-                      of (w x h) = (4200000.0 x 4500000.0) meters.
-                      [default: {}]'''.format(defaults["pointSize"])
-                      )
-
-    parser.add_argument('-m','--map_res',
-                      action="store",
-                      dest="map_res",
-                      default=defaults["map_res"],
-                      type=str,
-                      choices=map_res_choice,
-                      help="""The map coastline resolution. Possible values are
-                      'c' (coarse),'l' (low) and 'i' (intermediate).
-                      [default: '{}']""".format(defaults["map_res"])
-                      )
-
-    parser.add_argument('--proj',
-                      action="store",
-                      dest="proj",
-                      default=defaults["proj"],
-                      type=str,
-                      choices=map_proj_choice,
-                      help='''The map projection. Possible values are
-                      {{{}}}. [default: '{}']'''.format(
-                          "".join(["'{0:8s} ({1}), ".format(tups[0]+"'",tups[1]) for tups in zip(map_proj_choice.keys(),map_proj_choice.values())]),
-                          defaults["proj"]
-                          )
-                      )
-
-    parser.add_argument('-o','--output_file',
-                      action="store",
-                      dest="output_file",
-                      default=defaults["output_file"],
-                      type=str,
-                      help='''The filename of the output png file.
-                      '''
-                      )
-
-    parser.add_argument('-O','--output_file_prefix',
-                      action="store",
-                      dest="outputFilePrefix",
-                      default=defaults["outputFilePrefix"],
-                      type=str,
-                      help="""String to prefix to the automatically generated
-                      png name.
-                      [default: {}]""".format(defaults["outputFilePrefix"])
-                      )
-
-    parser.add_argument("-v", "--verbose",
-                      dest='verbosity',
-                      action="count",
-                      default=2,
-                      help='''each occurrence increases verbosity 1 level from
-                      INFO. -v=DEBUG'''
-                      )
-
-    parser.add_argument("-q", "--quiet",
-                      action="store_true",
-                      dest='quiet',
-                      default=False,
-                      help='''Silence all console output'''
-                      )
-
-    args = parser.parse_args()
-
-    # Do any parser checking for conditional arguments
-    if args.datatype=='MIRS' or args.datatype=='NUCAPS':
-        if args.dataset=='ctp' or args.dataset=='ctt':
-            parser.error("""Datasets 'ctp' and 'ctt' can only be used with IAPP and HSRTV.""")
-
-    # Set up the default behaviour for the pressure and elevation switches
-    if args.pressure!=None and args.elevation!=None:
-        parser.error("""Cannot specify both 'pressure' and 'elevation'.""")
-    elif args.pressure==None and args.elevation==None:
-        args.pressure = 850.
-
-    # Set up the logging
-    levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
-    level = levels[args.verbosity if args.verbosity < 4 else 3]
-    log_common.configure_logging(level)
-
-    return args
-
-
 def main():
     '''
     The main method.
     '''
 
-    # Read in the options
-    options = _argparse()
+    # Read in the command line options
+    args, work_dir = argument_parser_image()
 
-    input_file = options.input_file
-    datatype = options.datatype
-    dataset = options.dataset
-    stride = options.stride
-    pressure = options.pressure
-    elevation = options.elevation
-    lat_0  = options.lat_0
-    lon_0  = options.lon_0
-    latMin = options.latMin
-    lonMin = options.lonMin
-    latMax = options.latMax
-    lonMax = options.lonMax
-    yMin = options.yMin
-    yMax = options.yMax
-    footprint = options.footprint
-    bounding_lat = options.bounding_lat
-    plotMin = options.plotMin
-    plotMax = options.plotMax
-    plot_type = options.plot_type
-    scale = options.scale
-    doScatterPlot = options.doScatterPlot
-    pointSize = options.pointSize
-    proj = options.proj
-    map_res = options.map_res
-    output_file  = options.output_file
-    outputFilePrefix  = options.outputFilePrefix
-    dpi = options.dpi
+
+    input_files = args.inputs
+    datatype = args.datatype
+    dataset = args.dataset
+    stride = args.stride
+    pressure = args.pressure
+    elevation = args.elevation
+    lat_0  = args.lat_0
+    lon_0  = args.lon_0
+    latMin = args.latMin
+    lonMin = args.lonMin
+    latMax = args.latMax
+    lonMax = args.lonMax
+    yMin = args.yMin
+    yMax = args.yMax
+    footprint = args.footprint
+    bounding_lat = args.bounding_lat
+    plotMin = args.plotMin
+    plotMax = args.plotMax
+    plot_type = args.plot_type
+    scale = args.scale
+    doScatterPlot = args.doScatterPlot
+    pointSize = args.pointSize
+    proj = args.proj
+    map_res = args.map_res
+    output_file  = args.output_file
+    outputFilePrefix  = args.outputFilePrefix
+    dpi = args.dpi
 
     # Obtain matched lists of the geolocation and product files
-    input_file_list = granuleFiles(input_file)
+    LOG.info(input_files)
+    input_file_list = granuleFiles(input_files)
 
     if input_file_list==[]:
         LOG.warn('No files match the input file glob "{}", aborting.'
-                .format(input_file))
+                .format(input_files))
         sys.exit(1)
 
 
@@ -640,13 +144,12 @@ def main():
     # Read in the input file, and return a dictionary containing the required
     # data
 
-    dataChoices=['iapp','mirs','hsrtv','nucaps']
-
     LOG.info("Input pressure = {}".format(pressure))
     LOG.info("Input elevation = {}".format(elevation))
 
-
     # Get all of the required command line options for the required satellite...
+    LOG.info("datatype = {}".format(datatype))
+    LOG.info("dataset = {}".format(dataset))
     sounder_package_cfg = sounder_packages.sounder_package_cfg[datatype]
     sounder_args = (input_file_list,dataset,plot_type)
     sounder_kwargs = {'pres_0':pressure,
@@ -659,6 +162,7 @@ def main():
 
     LOG.info("sounder_obj.pres_0 = {}".format(sounder_obj.pres_0))
     LOG.info("sounder_obj.elev_0 = {}".format(sounder_obj.elev_0))
+    #sys.exit(0) # DEBUG
 
     pres_0 = sounder_obj.pres_0
     elev_0 = sounder_obj.elev_0
@@ -671,7 +175,7 @@ def main():
         lat_col = sounder_obj.datasets['lat_col']['data']
         lon_col = sounder_obj.datasets['lon_col']['data']
         pressure = sounder_obj.pressure
-        options.footprint = sounder_obj.col
+        args.footprint = sounder_obj.col
         if elevation != None:
             elevation = sounder_obj.datasets['elev_slice']['data']
 
@@ -715,15 +219,15 @@ def main():
     if output_file!=None and outputFilePrefix!=None :
         output_file = "{}_{}.png".format(outputFilePrefix,file_suffix)
 
-    dataset = options.dataset
+    dataset = args.dataset
 
     # Set the navigation
-    plot_nav_options = set_plot_navigation(lats,lons,sounder_obj,options)
+    plot_nav_options = set_plot_navigation(lats,lons,sounder_obj, args)
     for key in plot_nav_options.keys():
         LOG.info("plot_nav_options['{}'] = {}".format(key,plot_nav_options[key]))
 
     # Set the plot styles
-    plot_style_options = set_plot_styles(sounder_obj,dataset,dataset_options,options)
+    plot_style_options = set_plot_styles(sounder_obj,dataset,dataset_options, args)
 
     #sys.exit(0)
 

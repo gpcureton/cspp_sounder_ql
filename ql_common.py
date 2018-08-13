@@ -197,7 +197,7 @@ class Datafile_HDF5():
         self.file_obj.close()
 
 
-def granuleFiles(prodGlob):
+def granuleFiles_old(prodGlob):
     '''
     Returns sorted lists of the geolocation and product files.
     '''
@@ -216,6 +216,47 @@ def granuleFiles(prodGlob):
 
     return prodList
 
+def granuleFiles(inputs, full=False):
+    '''
+    Trawl through the files and directories given at the command line, and return the files only.
+    '''
+
+    input_files = []
+
+    for input in inputs:
+        LOG.debug("bash glob input = {}".format(input))
+
+    if full:
+        input_files = list(set(inputs))
+        input_files.sort()
+        return input_files
+
+    input_dirs = []
+    input_files = []
+
+    # Sort the command line inputs into directory and file inputs...
+    for input in inputs:
+        input = os.path.abspath(os.path.expanduser(input))
+        if os.path.isdir(input):
+            # Input file glob is of form "/path/to/files"
+            LOG.debug("Input {} is a directory containing files...".format(input))
+            input_dirs.append(input)
+        elif os.path.isfile(input):
+            # Input file glob is of form "/path/to/files/goes13_1_2015_143_1745.input"
+            LOG.debug("Input {} is a file.".format(input))
+            input_files.append(input)
+
+    input_dirs = list(set(input_dirs))
+    input_dirs.sort()
+    input_files = list(set(input_files))
+    input_files.sort()
+
+    for dirs in input_dirs:
+        LOG.debug("input dirs {}".format(dirs))
+    for files in input_files:
+        LOG.debug("input files {}".format(files))
+
+    return input_files
 
 def get_pressure_index(pressure,pres_0,kd_dist=10.):
     '''
@@ -277,6 +318,7 @@ def get_pressure_level(pressure,pres_0):
     '''
     pressure_scope = 10.
     LOG.debug("Scope of pressure level search is {} hPa".format(pressure_scope))
+    LOG.debug("pressure, pres_0 = {},{}".format(pressure, pres_0))
 
     level = get_pressure_index(pressure, pres_0, kd_dist=pressure_scope)
 
@@ -284,6 +326,7 @@ def get_pressure_level(pressure,pres_0):
     while (level==None and attempts<10):
         pressure_scope *= 1.1
         LOG.debug("Scope of pressure level search is {} hPa".format(pressure_scope))
+        LOG.debug("pressure, pres_0 = {},{}".format(pressure, pres_0))
         level = get_pressure_index(pressure, pres_0, kd_dist=pressure_scope)
         attempts += 1
 
@@ -896,7 +939,7 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
 
     m.drawcoastlines(linewidth = 0.5)
     m.drawcountries(linewidth = 0.5)
-    m.fillcontinents(color='0.85',zorder=0)
+    #m.fillcontinents(color=0.85,zorder=0)
     m.drawparallels(np.arange( -90, 91,30), color = '0.25',
             linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
     m.drawmeridians(np.arange(-180,180,30), color = '0.25',
@@ -952,11 +995,11 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
         x,y=m_globe(lon[::stride,::stride],lat[::stride,::stride])
         swath = np.zeros(np.shape(x),dtype=int)
 
-        m_globe.drawmapboundary(linewidth=0.1)
-        m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
-        m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
+        #m_globe.drawmapboundary(linewidth=0.1)
+        #m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
+        #m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
 
-        p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
+        #p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
     else:
         pass
 
