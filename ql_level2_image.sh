@@ -13,7 +13,7 @@ fi
 . ${CSPP_SOUNDER_QL_HOME}/cspp_sounder_ql_runtime.sh
 
 usage() {
-    $PY $CSPP_SOUNDER_QL_HOME/scripts/sounder_image.py --help
+    $PY -W ignore $CSPP_SOUNDER_QL_HOME/scripts/sounder_image.py --help
 }
 
 if [ -z "$1" ]; then
@@ -21,4 +21,4 @@ if [ -z "$1" ]; then
     exit 3
 fi
 
-$PY $CSPP_SOUNDER_QL_HOME/scripts/sounder_image.py "$@"
+$PY -W ignore $CSPP_SOUNDER_QL_HOME/scripts/sounder_image.py "$@"

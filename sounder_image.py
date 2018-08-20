@@ -4,14 +4,14 @@
 sounder_image.py
 
 Purpose: Create a plot of temperature, dewpoint or relative humidity,
-         at a particular pressure level. Supports outputs from the following 
+         at a particular pressure level. Supports outputs from the following
          packages...
-         
+
          * International ATOVS Processing Package (IAPP)
          * Microwave Integrated Retrieval System (MIRS)
          * CSPP Hyperspectral Retrieval (HSRTV) Package
          * NOAA Unique CrIS/ATMS Product System (NUCAPS)
-         
+
 
 Preconditions:
     * matplotlib (with basemap)
@@ -19,7 +19,7 @@ Preconditions:
     * h5py python module
 
 Optional:
-    * 
+    *
 
 Minimum commandline:
 
@@ -27,7 +27,7 @@ Minimum commandline:
 
 where...
 
-    INPUTFILES: The fully qualified path to the input files. May be a 
+    INPUTFILES: The fully qualified path to the input files. May be a
     file glob.
 
     DATATYPE: One of 'IAPP','MIRS', 'HSRTV' or 'NUCAPS'.
@@ -48,7 +48,7 @@ from shutil import rmtree,copyfile
 from glob import glob
 from time import time
 from datetime import datetime,timedelta
-import warnings
+from collections import OrderedDict
 
 import numpy as np
 from numpy import ma
@@ -67,14 +67,11 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 # This must come *after* the backend is specified.
 import matplotlib.pyplot as ppl
 
-# Mute Matplotlib deprecation warnings
-import matplotlib.cbook
-warnings.filterwarnings("ignore",category=matplotlib.cbook.mplDeprecation)
-
 from mpl_toolkits.basemap import Basemap
 
 import scipy.spatial as ss
 
+import xarray
 from netCDF4 import Dataset
 from netCDF4 import num2date
 import h5py
@@ -113,7 +110,7 @@ def granuleFiles(prodGlob):
     '''
     Returns sorted lists of the geolocation and product files.
     '''
-    
+
     prodDir = path.dirname(path.abspath(path.expanduser(prodGlob)))
 
     LOG.debug("Initial prodGlob = {}".format(prodGlob))
@@ -125,7 +122,7 @@ def granuleFiles(prodGlob):
 
     prodList = glob("%s/%s" % (prodDir,prodGlob))
     prodList.sort()
-    
+
     return prodList
 
 def generate_file_list(inputs, full=False):
@@ -173,7 +170,7 @@ def generate_file_list(inputs, full=False):
 def get_pressure_index(pressure,pres_0=850.,kd_dist=10.):
     '''
     Get the indices in the pressure level array closes to the desired
-    pressure. If no pressure is specified, use the closest to 850mb. 
+    pressure. If no pressure is specified, use the closest to 850mb.
     Uses kd-tree.
     '''
 
@@ -213,9 +210,8 @@ def get_pressure_index(pressure,pres_0=850.,kd_dist=10.):
         level = [levels_masked[i] for i in a][0]
 
         LOG.debug("Level index is {}".format(level))
-        
-        LOG.info("Retrieved pressure is {:4.2f} mb".\
-                format(pressure[level].squeeze()))
+
+        LOG.info("Retrieved pressure is {:4.2f} mb".format(pressure[level].squeeze()))
 
     except Exception, err :
         LOG.warn("{}".format(err))
@@ -247,24 +243,24 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
             Longitude:units = "degrees_east" ;
 
     float Pressure_Levels(Pres_Levels) ;
-            Pressure_Levels:long_name = "Pressure Levels at which the retrieved 
+            Pressure_Levels:long_name = "Pressure Levels at which the retrieved
                                          values are calculated" ;
             Pressure_Levels:units = "hPa" ;
 
     float Temperature_Retrieval(Along_Track, Across_Track, Pres_Levels) ;
-            Temperature_Retrieval:long_name = "Temperature Retrieval for 
+            Temperature_Retrieval:long_name = "Temperature Retrieval for
                                                the IAPP" ;
             Temperature_Retrieval:units = "degrees Kelvin" ;
 
     float WaterVapor_Retrieval(Along_Track, Across_Track, Pres_Levels) ;
-            WaterVapor_Retrieval:long_name = "Water Vapor Retrieval for 
+            WaterVapor_Retrieval:long_name = "Water Vapor Retrieval for
                                              the IAPP" ;
             WaterVapor_Retrieval:units = "g/kg" ;
 
     float Dew_Point_Temp_Retrieval(Along_Track, Across_Track, Pres_Levels) ;
-            Dew_Point_Temp_Retrieval:long_name = "Dew Point Temperature Retrieval 
+            Dew_Point_Temp_Retrieval:long_name = "Dew Point Temperature Retrieval
                                                   for the IAPP" ;
-            Dew_Point_Temp_Retrieval:units = "degrees Kelvin" ;                
+            Dew_Point_Temp_Retrieval:units = "degrees Kelvin" ;
 
     float Cloud_Top_Temperature_CO2(Along_Track, Across_Track, Num_of_FOVs) ;
         Cloud_Top_Temperature_CO2:long_name = "CO2 Slicing Cloud Top Temperature of the 3x3 box" ;
@@ -333,10 +329,10 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
                 pressure = sounding_inputs['pres']['node'][:]
 
                 for label in data_labels:
-                    if sounding_inputs[label] != None:
+                    if sounding_inputs[label] is not None:
                         LOG.info(">>> Processing {} ..."
                                 .format(sounding_inputs[label]['dset_name']))
-                        for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                        for attr_name in sounding_inputs[label]['node'].ncattrs():
                             attr = getattr(sounding_inputs[label]['node'],attr_name)
                             LOG.debug("{} = {}".format(attr_name,attr))
                             sounding_inputs[label][attr_name] = attr
@@ -348,7 +344,7 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
                 level = get_pressure_index(pressure,pres_0=pres_0,
                         kd_dist=pressure_scope)
                 attempts = 1
-                while (level==None and attempts<10):
+                while (level is None and attempts<10):
                     pressure_scope *= 1.1
                     LOG.debug("Scope of pressure level search is {} hPa"
                             .format(pressure_scope))
@@ -356,9 +352,9 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
                             kd_dist=pressure_scope)
                     attempts += 1
 
-                if level==None:
+                if level is None:
                     raise Exception("No suitable pressure level found, aborting...")
-                     
+
                 LOG.debug("Retrieved level = {}".format(level))
                 sounding_inputs['pres_0'] = pressure[level]
                 data_labels.remove('pres')
@@ -420,10 +416,10 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
     pressure_array = pressure[level] * \
             np.ones(sounding_inputs['lat']['data'].shape,dtype='float')
     LOG.debug("pressure_array.shape =  {}".format(pressure_array.shape))
-    
+
     # Construct the masks of the various datasets
     for label in ['temp','dwpt','wvap','ctp','ctt','lat','lon']:
-        if sounding_inputs[label] != None:
+        if sounding_inputs[label] is not None:
             LOG.debug(">>> Processing {} ..."
                     .format(sounding_inputs[label]['dset_name']))
             fill_value = sounding_inputs[label]['_FillValue']
@@ -436,7 +432,7 @@ def iapp_sounder(iapp_file_list,pres_0=850.):
                     data_mask = np.ones(data.shape,dtype='bool')
                 else:
                     data_mask = data.mask
-            else: 
+            else:
                 data_mask = np.zeros(data.shape,dtype='bool')
 
             LOG.debug("There are {}/{} masked values in {}".\
@@ -489,7 +485,7 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
     '''
     float Latitude(Scanline, Field_of_view) ;
             Latitude:long_name = "Latitude of the view (-90,90)" ;
-            
+
     float Longitude(Scanline,Field_of_view) ;
             Longitude:long_name = "Longitude of the view (-180,180)" ;
 
@@ -506,7 +502,7 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
 
     short Qc(Scanline, Field_of_view, Qc_dim) ;
             Qc:description = "Qc(0): 0-good,1-usable with problem ,2-bad" ;
-    '''         
+    '''
 
     data_labels = [
                     'pres',
@@ -567,11 +563,11 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
                 pressure = sounding_inputs['pres']['node'][:]
 
                 for label in data_labels:
-                    if sounding_inputs[label] != None:
+                    if sounding_inputs[label] is not None:
                         LOG.info(">>> Processing {} ..."
                                 .format(sounding_inputs[label]['dset_name']))
                         sounding_inputs[label]['_FillValue'] = fill_value
-                        for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                        for attr_name in sounding_inputs[label]['node'].ncattrs():
                             attr = getattr(sounding_inputs[label]['node'],attr_name)
                             LOG.debug("{} = {}".format(attr_name,attr))
                             sounding_inputs[label][attr_name] = attr
@@ -583,7 +579,7 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
                 level = get_pressure_index(pressure,pres_0=pres_0,
                         kd_dist=pressure_scope)
                 attempts = 1
-                while (level==None and attempts<10):
+                while (level is None and attempts<10):
                     pressure_scope *= 1.1
                     LOG.debug("Scope of pressure level search is {} hPa"
                             .format(pressure_scope))
@@ -591,9 +587,9 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
                             kd_dist=pressure_scope)
                     attempts += 1
 
-                if level==None:
+                if level is None:
                     raise Exception("No suitable pressure level found, aborting...")
-                     
+
                 LOG.debug("Retrieved level = {}".format(level))
                 sounding_inputs['pres_0'] = pressure[level]
                 data_labels.remove('pres')
@@ -656,7 +652,7 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
 
     # Construct the masks of the various datasets
     for label in ['temp','wvap','lat','lon']:
-        if sounding_inputs[label] != None:
+        if sounding_inputs[label] is not None:
             LOG.debug(">>> Processing {} ..."
                     .format(sounding_inputs[label]['dset_name']))
             data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
@@ -667,7 +663,7 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
                     data_mask = np.ones(data.shape,dtype='bool')
                 else:
                     data_mask = data.mask
-            else: 
+            else:
                 data_mask = np.zeros(data.shape,dtype='bool')
 
             LOG.debug("There are {}/{} masked values in {}".\
@@ -677,7 +673,7 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
 
     # Contruct the QC mask
     for label in ['qc']:
-        if sounding_inputs[label] != None:
+        if sounding_inputs[label] is not None:
             LOG.debug(">>> Processing {} ..."
                     .format(sounding_inputs[label]['dset_name']))
             fill_value = sounding_inputs[label]['_FillValue']
@@ -691,7 +687,7 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
                     data_fill_mask = np.ones(data_fill.shape,dtype='bool')
                 else:
                     data_fill_mask = data_fill.mask
-            else: 
+            else:
                 data_fill_mask = np.zeros(data_fill.shape,dtype='bool')
 
             LOG.debug("There are {}/{} fill values in {}".\
@@ -702,7 +698,7 @@ def mirs_sounder(mirs_file_list,pres_0=850.):
                     data_qc_mask = np.ones(data_qc.shape,dtype='bool')
                 else:
                     data_qc_mask = data_qc.mask
-            else: 
+            else:
                 data_qc_mask = np.zeros(data_qc.shape,dtype='bool')
 
             LOG.debug("There are {}/{} qc values in {}".\
@@ -859,15 +855,15 @@ def hsrtv_sounder(dr_file_list,pres_0=850.):
                 # Get the pressure scale
                 pressure = sounding_inputs['pres']['node'][:]
 
-                #FIXME: All attributes for the HSRTV datasets appear to be strings, 
-                #       whether the attribute value is a string or not. So we can't 
-                #       determine the attribute type from the file, we just have 
+                #FIXME: All attributes for the HSRTV datasets appear to be strings,
+                #       whether the attribute value is a string or not. So we can't
+                #       determine the attribute type from the file, we just have
                 #       *know* it. Why bother with self-descibing file formats then?
                 for label in data_labels:
-                    if sounding_inputs[label] != None:
+                    if sounding_inputs[label] is not None:
                         LOG.info(">>> Processing {} ...".\
                                 format(sounding_inputs[label]['dset_name']))
-                        for attr_name in sounding_inputs[label]['node'].attrs.keys(): 
+                        for attr_name in sounding_inputs[label]['node'].attrs.keys():
                             attr = sounding_inputs[label]['node'].attrs[attr_name]
                             LOG.debug("{} = {}".format(attr_name,np.squeeze(attr)))
                             sounding_inputs[label][attr_name] = attr
@@ -879,7 +875,7 @@ def hsrtv_sounder(dr_file_list,pres_0=850.):
                 level = get_pressure_index(pressure,pres_0=pres_0,
                         kd_dist=pressure_scope)
                 attempts = 1
-                while (level==None and attempts<10):
+                while (level is None and attempts<10):
                     pressure_scope *= 1.1
                     LOG.debug("Scope of pressure level search is {} hPa"
                             .format(pressure_scope))
@@ -887,9 +883,9 @@ def hsrtv_sounder(dr_file_list,pres_0=850.):
                             kd_dist=pressure_scope)
                     attempts += 1
 
-                if level==None:
+                if level is None:
                     raise Exception("No suitable pressure level found, aborting...")
-                     
+
                 LOG.debug("Retrieved level = {}".format(level))
                 sounding_inputs['pres_0'] = pressure[level]
                 data_labels.remove('pres')
@@ -940,7 +936,7 @@ def hsrtv_sounder(dr_file_list,pres_0=850.):
 
     # Construct the masks of the various datasets
     for label in ['temp','dwpt','wvap','relh','ctp','ctt','lat','lon']:
-        if sounding_inputs[label] != None:
+        if sounding_inputs[label] is not None:
             LOG.debug(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
             fill_value = float(sounding_inputs[label]['missing_value'][0])
             data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
@@ -951,7 +947,7 @@ def hsrtv_sounder(dr_file_list,pres_0=850.):
                     data_mask = np.ones(data.shape,dtype='bool')
                 else:
                     data_mask = data.mask
-            else: 
+            else:
                 data_mask = np.zeros(data.shape,dtype='bool')
 
             LOG.debug("There are {}/{} masked values in {}".\
@@ -1057,11 +1053,11 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
             Quality_Flag:valid_range = 0, 31 ;
             Quality_Flag:_FillValue = -9999 ;
             Quality_Flag:flag_values = 0, 1, 2, 4, 8, 9, 16, 17, 24, 25 ;
-            Quality_Flag:flag_meanings = "accepted reject_physical reject_MIT reject_NOAA_reg 
-                                          reject_iMIT reject_phy_and_iMIT reject_iNOAA 
-                                          reject_phy_and_iNOAA reject_iMIT_and_iNOAA 
+            Quality_Flag:flag_meanings = "accepted reject_physical reject_MIT reject_NOAA_reg
+                                          reject_iMIT reject_phy_and_iMIT reject_iNOAA
+                                          reject_phy_and_iNOAA reject_iMIT_and_iNOAA
                                           reject_phy_and_iMIT_and_iNOAA" ;
-    '''         
+    '''
 
     data_labels = [
                     'pres',
@@ -1101,35 +1097,38 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
             LOG.debug("Ingesting granule {} ...".format(nucaps_file))
 
             # Open the file object
-            fileObj = Dataset(nucaps_file)
+            fileObj = xarray.open_dataset(nucaps_file, decode_times=False, mask_and_scale=False, group='/')
 
             # Open the dataset nodes for each of the required datasets
-            sounding_inputs['pres']['node'] = fileObj.variables['Pressure']
-            sounding_inputs['temp']['node'] = fileObj.variables['Temperature']
-            sounding_inputs['wvap']['node'] = fileObj.variables['H2O_MR']
-            sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
-            sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
-            sounding_inputs['qc']['node'] = fileObj.variables['Quality_Flag']
+            sounding_inputs['pres']['node'] = fileObj['Pressure']
+            sounding_inputs['temp']['node'] = fileObj['Temperature']
+            sounding_inputs['wvap']['node'] = fileObj['H2O_MR']
+            sounding_inputs['lat']['node'] = fileObj['Latitude']
+            sounding_inputs['lon']['node'] = fileObj['Longitude']
+            sounding_inputs['qc']['node'] = fileObj['Quality_Flag']
+
 
             # Fill in some missing attributes
             sounding_inputs['pres']['units'] = 'hPa'
             sounding_inputs['temp']['units'] = 'K'
             sounding_inputs['wvap']['units'] = 'g/kg'
 
+            # Determine the shape of latitude dataset
+            nucaps_shape = (int(sounding_inputs['lat']['node'].shape[0])/30, 30)
+
             if first_granule:
 
                 # Get the pressure scale
-                pressure = sounding_inputs['pres']['node'][0,:]
+                pressure = sounding_inputs['pres']['node'].data[0]
 
                 for label in data_labels:
-                    if sounding_inputs[label] != None:
-                        LOG.info(">>> Processing {} ..."
-                                .format(sounding_inputs[label]['dset_name']))
-                        for attr_name in sounding_inputs[label]['node'].ncattrs(): 
-                            attr = getattr(sounding_inputs[label]['node'],attr_name)
-                            LOG.debug("{} = {}".format(attr_name,attr))
+                    if sounding_inputs[label] is not None:
+                        LOG.info(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
+                        LOG.debug("{}".format(sounding_inputs[label]['node'].attrs))
+                        for attr_name in sounding_inputs[label]['node'].attrs.keys():
+                            attr = sounding_inputs[label]['node'].attrs[attr_name]
+                            LOG.debug("{} = {}".format(attr_name, attr))
                             sounding_inputs[label][attr_name] = attr
-
 
                 # Search for the pressure level closest to the input value
                 pressure_scope = 10.
@@ -1138,7 +1137,7 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
                 level = get_pressure_index(pressure,pres_0=pres_0,
                         kd_dist=pressure_scope)
                 attempts = 1
-                while (level==None and attempts<10):
+                while (level is None and attempts<10):
                     pressure_scope *= 1.1
                     LOG.debug("Scope of pressure level search is {} hPa"
                             .format(pressure_scope))
@@ -1146,9 +1145,9 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
                             kd_dist=pressure_scope)
                     attempts += 1
 
-                if level==None:
+                if level is None:
                     raise Exception("No suitable pressure level found, aborting...")
-                 
+
                 LOG.debug("Retrieved level = {}".format(level))
                 sounding_inputs['pres_0'] = pressure[level]
                 data_labels.remove('pres')
@@ -1158,10 +1157,10 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
                 try :
                     sounding_inputs[label]['data']  = np.vstack((
                         sounding_inputs[label]['data'],
-                        sounding_inputs[label]['node'][:].reshape(4,30)))
+                        sounding_inputs[label]['node'].data.reshape(*nucaps_shape)))
                     LOG.debug("subsequent arrays...")
                 except KeyError :
-                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:].reshape(4,30)
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'].data.reshape(*nucaps_shape)
                     LOG.debug("first arrays...")
 
                 LOG.debug("Intermediate {} shape = {}".format(
@@ -1171,10 +1170,10 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
             for label in ['temp','wvap']:
                 try :
                     sounding_inputs[label]['data']  = np.vstack((
-                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,level].reshape(4,30)))
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'].data[:,level].reshape(*nucaps_shape)))
                     LOG.debug("subsequent arrays...")
                 except KeyError :
-                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,level].reshape(4,30)
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'].data[:,level].reshape(*nucaps_shape)
                     LOG.debug("first arrays...")
 
                 LOG.debug("Intermediate {} shape = {}".format(
@@ -1183,10 +1182,10 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
             for label in ['qc']:
                 try :
                     sounding_inputs[label]['data']  = np.vstack((
-                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:].reshape(4,30)))
+                        sounding_inputs[label]['data'],sounding_inputs[label]['node'].data.reshape(*nucaps_shape)))
                     LOG.debug("subsequent arrays...")
                 except KeyError :
-                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:].reshape(4,30)
+                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'].data.reshape(*nucaps_shape)
                     LOG.debug("first arrays...")
 
                 LOG.debug("Intermediate {} shape = {}".format(
@@ -1205,7 +1204,6 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
             LOG.info("Exiting...")
             sys.exit(1)
 
-
     # Convert water vapor from g/g to g/kg
     sounding_inputs['wvap']['data'] = 1000.*sounding_inputs['wvap']['data']
 
@@ -1216,7 +1214,7 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
 
     # Construct the masks of the various datasets
     for label in ['temp','wvap','lat','lon']:
-        if sounding_inputs[label] != None:
+        if sounding_inputs[label] is not None:
             LOG.debug(">>> Processing {} ..."
                     .format(sounding_inputs[label]['dset_name']))
             fill_value = sounding_inputs[label]['_FillValue']
@@ -1228,7 +1226,7 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
                     data_mask = np.ones(data.shape,dtype='bool')
                 else:
                     data_mask = data.mask
-            else: 
+            else:
                 data_mask = np.zeros(data.shape,dtype='bool')
 
             LOG.debug("There are {}/{} masked values in {}".\
@@ -1238,7 +1236,7 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
 
     # Contruct the QC mask
     for label in ['qc']:
-        if sounding_inputs[label] != None:
+        if sounding_inputs[label] is not None:
             LOG.debug(">>> Processing {} ..."
                     .format(sounding_inputs[label]['dset_name']))
             fill_value = sounding_inputs[label]['_FillValue']
@@ -1252,9 +1250,10 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
                     data_fill_mask = np.ones(data_fill.shape,dtype='bool')
                 else:
                     data_fill_mask = data_fill.mask
-            else: 
+            else:
                 data_fill_mask = np.zeros(data_fill.shape,dtype='bool')
 
+            #data_fill_mask = np.zeros(data_fill.shape,dtype='bool') # DEBUG
             LOG.debug("There are {}/{} fill values in {}".\
                     format(np.sum(data_fill_mask),data_fill.size,label))
 
@@ -1263,7 +1262,10 @@ def nucaps_sounder(nucaps_file_list,pres_0=850.):
                     data_qc_mask = np.ones(data_qc.shape,dtype='bool')
                 else:
                     data_qc_mask = data_qc.mask
-            else: 
+                    # If the QC flags a total a bust, the QC flags might be crap...
+                    if np.sum(data_qc_mask) == data_qc.size:
+                        data_qc_mask = np.zeros(data_qc.shape,dtype='bool')
+            else:
                 data_qc_mask = np.zeros(data_qc.shape,dtype='bool')
 
             LOG.debug("There are {}/{} qc values in {}".\
@@ -1364,7 +1366,7 @@ def plotData(data,data_mask,units,pngName,stride=1,dpi=200):
 
 
 def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
-        
+
     # Copy the plot options to local variables
     title         = plot_options['title']
     cbar_title    = plot_options['cbar_title']
@@ -1398,10 +1400,10 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
                 format(cbar_title))
         return -1
 
-    # Determine if this is a global projection, so we can avoid having the 
+    # Determine if this is a global projection, so we can avoid having the
     # global "outset" plot.
     global_plot = False
-    if (proj=='moll' 
+    if (proj=='moll'
             or proj=='hammer'
             or proj=='robin'
             or proj=='eck4'
@@ -1416,7 +1418,7 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
             or proj=='vandg'):
         global_plot = True
 
-    # Determine if this is a "rectangular" projection, so we can set sensible 
+    # Determine if this is a "rectangular" projection, so we can set sensible
     # latitude limits.
     rect_plot = False
     if (proj=='cyl'
@@ -1428,50 +1430,51 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
 
     if (proj=='geos' or proj=='ortho' or global_plot):
         LOG.info("Setting lat_0 and lon_0 for {} projection.".format(proj))
-        lat_0 = 0. if lat_0==None else lat_0
-        lon_0 = 0. if lon_0==None else lon_0
+        lat_0 = 0. if lat_0 is None else lat_0
+        lon_0 = 0. if lon_0 is None else lon_0
         boundinglat = None
 
     if (proj=='npstere' and bounding_lat<-30.):
-        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat) 
+        LOG.warn("""North-Polar Stereographic bounding latitude (--bounding_lat)
          of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
         bounding_lat = -30.
 
     if (proj=='spstere' and bounding_lat>30.):
-        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat) 
+        LOG.warn("""South-Polar Stereographic bounding latitude (--bounding_lat)
          of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
         bounding_lat = 30.
 
     if (proj=='npaeqd' and bounding_lat<-30.):
-        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+        LOG.warn("""North-Polar Azimuthal Equidistant bounding latitude (--bounding_lat)
          of {} degrees is too low, setting to -30 degrees latitude.""".format(bounding_lat))
         bounding_lat = -30.
 
     if (proj=='spaeqd' and bounding_lat>30.):
-        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat) 
+        LOG.warn("""South-Polar Azimuthal Equidistant bounding latitude (--bounding_lat)
          of {} degrees is too high, setting to 30 degrees latitude.""".format(bounding_lat))
         bounding_lat = 30.
 
     if (proj=='nplaea' and bounding_lat<=0.):
-        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+        LOG.warn("""North-Polar Lambert Azimuthal bounding latitude (--bounding_lat)
          of {} degrees must be in northern hemisphere, setting to +1 degrees latitude.""".format(bounding_lat))
         bounding_lat = 1.
 
     if (proj=='splaea' and bounding_lat>=0.):
-        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat) 
+        LOG.warn("""South-Polar Lambert Azimuthal bounding latitude (--bounding_lat)
          of {} degrees must be in southern hemisphere, setting to -1 degrees latitude.""".format(bounding_lat))
         bounding_lat = -1.
 
     # Compute the central lat and lon if they are not specified
-    if (lat_0==None) or (lon_0==None):
+    LOG.debug("lat_0,lon_0= ({},{})".format(lat_0,lon_0))
+    if (lat_0 is None) or (lon_0 is None):
         geo_shape = lat.shape
         nrows, ncols = geo_shape[0],geo_shape[1]
         LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
         # Non lat/lon pair given, use the central unmasked values.
         row_idx = int(nrows/2.)
         col_idx = int(ncols/2.)
-        lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
-        lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
+        lat_0 = lat[row_idx,col_idx] if lat_0 is None else lat_0
+        lon_0 = lon[row_idx,col_idx] if lon_0 is None else lon_0
         LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
                 format(lat_0,lon_0))
 
@@ -1504,10 +1507,10 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
     # Projection dependent plotting options
     if global_plot:
         if rect_plot:
-            plot_kw['llcrnrlat'] =  -80. if latMin==None else latMin
-            plot_kw['urcrnrlat'] =   80. if latMax==None else latMax
-            plot_kw['llcrnrlon'] = -180. if lonMin==None else lonMin
-            plot_kw['urcrnrlon'] =  180. if lonMax==None else lonMax
+            plot_kw['llcrnrlat'] =  -80. if latMin is None else latMin
+            plot_kw['urcrnrlat'] =   80. if latMax is None else latMax
+            plot_kw['llcrnrlon'] = -180. if lonMin is None else lonMin
+            plot_kw['urcrnrlon'] =  180. if lonMax is None else lonMax
         else:
             pass
     else:
@@ -1542,15 +1545,15 @@ def plotMapData(lat,lon,data,data_mask,pngName,**plot_options):
     m.drawcoastlines(linewidth = 0.5)
     m.drawcountries(linewidth = 0.5)
     m.fillcontinents(color='0.85',zorder=0)
-    m.drawparallels(np.arange( -90, 91,30), color = '0.25', 
+    m.drawparallels(np.arange( -90, 91,30), color = '0.25',
             linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
-    m.drawmeridians(np.arange(-180,180,30), color = '0.25', 
+    m.drawmeridians(np.arange(-180,180,30), color = '0.25',
             linewidth = 0.5,labels=[1,0,1,0],fontsize=9,labelstyle="+/-")
 
     data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
 
-    plotMin = np.min(data) if plotMin==None else plotMin
-    plotMax = np.max(data) if plotMax==None else plotMax
+    plotMin = np.min(data) if plotMin is None else plotMin
+    plotMax = np.max(data) if plotMax is None else plotMax
     LOG.debug("plotMin = {}".format(plotMin))
     LOG.debug("plotMax = {}".format(plotMax))
 
@@ -1617,51 +1620,54 @@ def _argparse():
 
     import argparse
 
-    dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
+    dataChoices = OrderedDict([
+        ('iapp', 'International TOVS Processing Package'),
+        ('mirs', 'Microwave Integrated Retrieval System'),
+        ('hsrtv', 'CrIS, AIRS and IASI Hyperspectral Retrieval Software'),
+        ('nucaps', 'NOAA Unique Combined Atmospheric Processing System')
+        ])
     prodChoices=['temp','wvap','dwpt','relh','ctp','ctt']
     map_res_choice = ['c','l','i']
-    map_proj_choice = {
-                       'cea':     'Cylindrical Equal Area',
-                       'lcc':     'Lambert Conformal',
-                       'ortho':   'Orthographic',
-                       'geos':    'Geostationary',
-                       'npstere': 'North-Polar Stereographic',
-                       'spstere': 'South-Polar Stereographic',
-                       'cyl':     'Cylindrical Equidistant',
-                       'sinu':    'Sinusoidal',
-                       'merc':    'Mercator'
-                       #'mbtfpq':  'McBryde-Thomas Flat-Polar Quartic',
-                       #'poly':    'Polyconic',
-                       #'moll':    'Mollweide',
-                       #'tmerc':   'Transverse Mercator',
-                       #'gall':    'Gall Stereographic Cylindrical',
-                       #'mill':    'Miller Cylindrical',
-                       #'stere':   'Stereographic',
-                       #'eqdc':    'Equidistant Conic',
-                       ##'rotpole': 'Rotated Pole',
-                       #'hammer':  'Hammer',
-                       #'nsper':   'Near-Sided Perspective',
-                       #'eck4':    'Eckert IV',
-                       #'aea':     'Albers Equal Area',
-                       #'kav7':    'Kavrayskiy VII',
-                       #'nplaea':  'North-Polar Lambert Azimuthal',
-                       #'splaea':  'South-Polar Lambert Azimuthal',
-                       #'npaeqd':  'North-Polar Azimuthal Equidistant',
-                       #'spaeqd':  'South-Polar Azimuthal Equidistant',
-                       #'cass':    'Cassini-Soldner',
-                       #'laea':    'Lambert Azimuthal Equal Area',
-                       #'robin':   'Robinson'
-                       }
+    map_proj_choice = OrderedDict([
+                       ('lcc',     'Lambert Conformal'),
+                       ('cea',     'Cylindrical Equal Area'),
+                       ('ortho',   'Orthographic'),
+                       ('geos',    'Geostationary'),
+                       ('npstere', 'North-Polar Stereographic'),
+                       ('spstere', 'South-Polar Stereographic'),
+                       ('cyl',     'Cylindrical Equidistant'),
+                       ('sinu',    'Sinusoidal'),
+                       ('merc',    'Mercator'),
+                       #('mbtfpq',  'McBryde-Thomas Flat-Polar Quartic'),
+                       #('poly',    'Polyconic'),
+                       #('moll',    'Mollweide'),
+                       #('tmerc',   'Transverse Mercator'),
+                       #('gall',    'Gall Stereographic Cylindrical'),
+                       #('mill',    'Miller Cylindrical'),
+                       #('stere',   'Stereographic'),
+                       #('eqdc',    'Equidistant Conic'),
+                       #(#'rotpole', 'Rotated Pole'),
+                       #('hammer',  'Hammer'),
+                       #('nsper',   'Near-Sided Perspective'),
+                       #('eck4',    'Eckert IV'),
+                       #('aea',     'Albers Equal Area'),
+                       #('kav7',    'Kavrayskiy VII'),
+                       #('nplaea',  'North-Polar Lambert Azimuthal'),
+                       #('splaea',  'South-Polar Lambert Azimuthal'),
+                       #('npaeqd',  'North-Polar Azimuthal Equidistant'),
+                       #('spaeqd',  'South-Polar Azimuthal Equidistant'),
+                       #('cass',    'Cassini-Soldner'),
+                       #('laea',    'Lambert Azimuthal Equal Area'),
+                       #('robin',   'Robinson')
+                       ])
 
 
     defaults = {
-                'input_file':None,
-                'datatype':None,
                 'dataset':'temp',
                 'stride':1,
                 'pressure':850.,
                 'lat_0':None,
-                'lat_0':None,
+                'lon_0':None,
                 'plotMin'  : None,
                 'plotMax'  : None,
                 'bounding_lat':0.,
@@ -1675,20 +1681,43 @@ def _argparse():
                 'dpi':200
                 }
 
-    description = '''Create a plot of temperature, dewpoint or something 
-                     else at a particular pressure level. Supports IAPP, MIRS, HSRTV 
-                     and NUCAPS files.'''
+    is_expert = False
+    if '--expert' in sys.argv:
+        expert_index = sys.argv.index('--expert')
+        sys.argv[expert_index] = '--help'
+        is_expert = True
+    elif '-x' in sys.argv:
+        expert_index = sys.argv.index('-x')
+        sys.argv[expert_index] = '--help'
+        is_expert = True
+    else:
+        pass
 
-    usage = "usage: %prog [mandatory args] [options]"
-    version = 'CSPP Sounder QL v1.1'
-
+    version = 'CSPP Sounder QL v1.2'
+    description = '''Create a plot of temperature, dewpoint or something else at a particular ''' \
+                  '''pressure level. Supports IAPP, MIRS, HSRTV and NUCAPS files.'''
+    epilog = ''
     parser = argparse.ArgumentParser(
-                                     #version=version,
-                                     description=description
+                                     description=description,
+                                     formatter_class=argparse.RawTextHelpFormatter,
+                                     add_help=False,
+                                     epilog=epilog
                                      )
 
     # Mandatory/positional arguments
-    
+
+    parser.add_argument(
+                      action="store",
+                      dest="datatype",
+                      type=str,
+                      choices=dataChoices,
+                      nargs='?',
+                      help="""The type of the input sounder data file. Possible values """ \
+                           """are:\n {}""".format(
+                               "".join(["\t'{0:8s} ({1}),\n".format(tups[0]+"'",tups[1]) for
+                               tups in zip(dataChoices.keys(),dataChoices.values())]))
+                      )
+
     parser.add_argument(
                       action='store',
                       dest='input_file',
@@ -1697,19 +1726,7 @@ def _argparse():
                       help = '''One or more input files.'''
     )
 
-    parser.add_argument(
-                      action="store",
-                      dest="datatype",
-                      default=defaults["datatype"],
-                      type=str,
-                      choices=dataChoices,
-                      help='''The type of the input sounder data file.\n\n
-                              Possible values are...
-                              {}.
-                           '''.format(dataChoices.__str__()[1:-1])
-                      )
-
-    # Optional arguments 
+    # Optional arguments
 
     parser.add_argument('--dset',
                       action="store",
@@ -1717,11 +1734,8 @@ def _argparse():
                       default=defaults["dataset"],
                       type=str,
                       choices=prodChoices,
-                      help='''The sounder dataset to plot.
-                              Possible values are...
-                              {}.
-                              [default: {}]
-                           '''.format(prodChoices.__str__()[1:-1],
+                      help='''The sounder dataset to plot. Possible values are... {}.''' \
+                           ''' [default: {}]'''.format(prodChoices.__str__()[1:-1],
                                defaults["dataset"])
                       )
 
@@ -1730,8 +1744,8 @@ def _argparse():
                       dest="stride",
                       default=defaults["stride"],
                       type=int,
-                      help='''Sample every STRIDE pixels in the band data. 
-                      [default: {}]'''.format(defaults["stride"])
+                      help='''Sample every STRIDE pixels in the band data.''' \
+                      ''' [default: {}]'''.format(defaults["stride"]) if is_expert else argparse.SUPPRESS
                       )
 
     parser.add_argument('--pressure',
@@ -1739,101 +1753,91 @@ def _argparse():
                       dest="pressure",
                       default=defaults["pressure"],
                       type=float,
-                      help='''The pressure level (in mbar) to plot.. 
-                      [default: {}]'''.format(defaults["pressure"])
+                      help='''The pressure level (in mbar) to plot.''' \
+                      ''' [default: {}]'''.format(defaults["pressure"])
                       )
 
-    parser.add_argument('--plotMin',
+    parser.add_argument('--plot-min',
                       action="store",
                       dest="plotMin",
                       default=defaults["plotMin"],
                       type=float,
-                      help="Minimum value to plot.".format(defaults["plotMin"])
+                      help="Minimum value to plot.".format(defaults["plotMin"]) if is_expert else argparse.SUPPRESS
                       )
 
-    parser.add_argument('--plotMax',
+    parser.add_argument('--plot-max',
                       action="store",
                       dest="plotMax",
                       default=defaults["plotMax"],
                       type=float,
-                      help="Maximum value to plot.".format(defaults["plotMax"])
+                      help="Maximum value to plot.".format(defaults["plotMax"]) if is_expert else argparse.SUPPRESS
                       )
 
-    parser.add_argument('-d','--dpi',
-                      action="store",
-                      dest="dpi",
-                      default='200.',
-                      type=float,
-                      help='''The resolution in dots per inch of the output 
-                      png file. 
-                      [default: {}]'''.format(defaults["dpi"])
-                      )
-
-    parser.add_argument('--lat_0',
+    parser.add_argument('--lat-0',
                       action="store",
                       dest="lat_0",
                       type=float,
-                      help="Center latitude of plot."
+                      help="Center latitude of plot." if is_expert else argparse.SUPPRESS
                       )
 
-    parser.add_argument('--lon_0',
+    parser.add_argument('--lon-0',
                       action="store",
                       dest="lon_0",
                       type=float,
-                      help="Center longitude of plot."
+                      help="Center longitude of plot." if is_expert else argparse.SUPPRESS
                       )
 
-    parser.add_argument('--latMin',
+    parser.add_argument('--lat-min',
                       action="store",
                       dest="latMin",
                       type=float,
-                      help="Minimum latitude to plot."
+                      help="Minimum latitude to plot." if is_expert else argparse.SUPPRESS
                       )
 
-    parser.add_argument('--latMax',
+    parser.add_argument('--lat-max',
                       action="store",
                       dest="latMax",
                       type=float,
-                      help="Maximum latitude to plot."
+                      help="Maximum latitude to plot." if is_expert else argparse.SUPPRESS
                       )
 
-    parser.add_argument('--lonMin',
+    parser.add_argument('--lon-min',
                       action="store",
                       dest="lonMin",
                       type=float,
-                      help="Minimum longitude to plot."
+                      help="Minimum longitude to plot." if is_expert else argparse.SUPPRESS
                       )
 
-    parser.add_argument('--lonMax',
+    parser.add_argument('--lon-max',
                       action="store",
                       dest="lonMax",
                       type=float,
-                      help="Maximum longitude to plot."
+                      help="Maximum longitude to plot." if is_expert else argparse.SUPPRESS
                       )
 
-    parser.add_argument('--bounding_lat',
+    parser.add_argument('--bounding-lat',
                       action="store",
                       dest="bounding_lat",
                       default=defaults["bounding_lat"],
                       type=float,
-                      help='''The minimum/maximum latitude to plot for the polar projections. 
-                      [default: {}]'''.format(defaults["bounding_lat"])
+                      help='''The minimum/maximum latitude to plot for the polar projections.''' \
+                      ''' [default: {}]'''.format(defaults["bounding_lat"]) if is_expert else argparse.SUPPRESS
                       )
 
-    parser.add_argument('--scatter_plot',
+    parser.add_argument('--scatter-plot',
                       action="store_true",
                       dest="doScatterPlot",
                       default=defaults["scatter_plot"],
-                      help="Generate the plot using a scatterplot approach."
+                      help="Generate the plot using a scatterplot approach." if is_expert else argparse.SUPPRESS
                       )
 
-    parser.add_argument('-P','--pointSize',
+    parser.add_argument('-P','--point-size',
                       action="store",
                       dest="pointSize",
                       default=defaults["pointSize"],
                       type=float,
-                      help='''Size of the plot point used to represent each pixel. 
-                      [default: {}]'''.format(defaults["pointSize"])
+                      help='''Size of the plot point used to represent each pixel.''' \
+                      ''' [default: {}]'''.format(defaults["pointSize"]) if is_expert else argparse.SUPPRESS
                       )
 
     parser.add_argument('-s','--scale',
@@ -1841,20 +1845,20 @@ def _argparse():
                       dest="scale",
                       default=defaults["scale"],
                       type=float,
-                      help='''The scaling factor for the default viewport size 
-                      of (w x h) = (4200000.0 x 4500000.0) meters. 
-                      [default: {}]'''.format(defaults["pointSize"])
+                      help='''The scaling factor for the default viewport size of (w x h) = ''' \
+                      '''(4200000.0 x 4500000.0) meters.
+                      [default: {}]'''.format(defaults["pointSize"]) if is_expert else argparse.SUPPRESS
                       )
 
-    parser.add_argument('-m','--map_res',
+    parser.add_argument('-m','--map-res',
                       action="store",
                       dest="map_res",
                       default=defaults["map_res"],
                       type=str,
                       choices=map_res_choice,
-                      help="""The map coastline resolution. Possible values are 
-                      'c' (coarse),'l' (low) and 'i' (intermediate). 
-                      [default: '{}']""".format(defaults["map_res"])
+                      help="""The map coastline resolution. Possible values are 'c' (coarse),'l'""" \
+                           """ (low) and 'i' (intermediate). """ \
+                           """[default: '{}']""".format(defaults["map_res"]) if is_expert else argparse.SUPPRESS
                       )
 
     parser.add_argument('--proj',
@@ -1863,11 +1867,10 @@ def _argparse():
                       default=defaults["proj"],
                       type=str,
                       choices=map_proj_choice,
-                      help='''The map projection. Possible values are 
-                      {{{}}}. [default: '{}']'''.format(
-                          "".join(["'{0:8s} ({1}), ".format(tups[0]+"'",tups[1]) for tups in zip(map_proj_choice.keys(),map_proj_choice.values())]),
-                          defaults["proj"]
-                          )
+                      help="""The map projection. Possible values are:\n {}[default: '{}']""".format(
+                           "".join(["\t'{0:8s} ({1}),\n".format(tups[0]+"'",tups[1]) for
+                           tups in zip(map_proj_choice.keys(),map_proj_choice.values())]),
+                           defaults["proj"]) if is_expert else argparse.SUPPRESS
                       )
 
     parser.add_argument('-o','--output_file',
@@ -1875,26 +1878,40 @@ def _argparse():
                       dest="output_file",
                       default=defaults["output_file"],
                       type=str,
-                      help='''The filename of the output png file. 
-                      '''
+                      help='''The filename of the output Skew-T png file. [default: {}]'''.format(
+                          defaults["output_file"])
                       )
 
-    parser.add_argument('-O','--output_file_prefix',
+    parser.add_argument('-O','--output-file-prefix',
                       action="store",
                       dest="outputFilePrefix",
                       default=defaults["outputFilePrefix"],
                       type=str,
-                      help="""String to prefix to the automatically generated 
-                      png name. 
-                      [default: {}]""".format(defaults["outputFilePrefix"])
+                      help="""String to prefix to the automatically generated png name. """ \
+                           """[default: {}]""".format(
+                               defaults["outputFilePrefix"]) if is_expert else argparse.SUPPRESS
                       )
 
-    parser.add_argument("-v", "--verbose",
+    parser.add_argument('-d','--dpi',
+                      action="store",
+                      dest="dpi",
+                      default='200.',
+                      type=float,
+                      help='''The resolution in dots per inch of the output png file.''' \
+                      ''' [default: {}]'''.format(defaults["dpi"]) if is_expert else argparse.SUPPRESS
+                      )
+
+    parser.add_argument('-V', '--version',
+                      action='version',
+                      version=version,
+                      help='''Print the CSPP Sounder QL package version'''
+                      )
+
+    parser.add_argument("-v", "--verbosity",
                       dest='verbosity',
-                      action="count", 
+                      action="count",
                       default=2,
-                      help='''each occurrence increases verbosity 1 level from 
-                      INFO. -v=DEBUG'''
+                      help='''Each occurrence increases verbosity one level from INFO. -v=DEBUG'''
                       )
 
     parser.add_argument("-q", "--quiet",
@@ -1904,6 +1921,17 @@ def _argparse():
                       help='''Silence all console output'''
                       )
 
+    parser.add_argument('-h', '--help',
+                      action="help",
+                      help='''Show this help message and exit'''
+                      )
+
+    parser.add_argument('-x', '--expert',
+                      dest='is_expert',
+                      action="store_true",
+                      default=False,
+                      help='''Display all help options, including the expert ones.'''
+                      )
     args = parser.parse_args()
 
     # Do any parser checking for conditional arguments
@@ -1923,12 +1951,11 @@ def _argparse():
         console_logFormat = '%(asctime)s.%(msecs)03d (%(levelname)s) : %(message)s'
         dateFormat='%Y-%m-%d %H:%M:%S'
 
-    logging.basicConfig(level = level, 
-            format = console_logFormat, 
+    logging.basicConfig(level = level,
+            format = console_logFormat,
             datefmt = dateFormat)
 
     return args
-
 
 def main():
     '''
@@ -1975,15 +2002,13 @@ def main():
     # Read in the input file, and return a dictionary containing the required
     # data
 
-    dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
-
-    if datatype == 'IAPP' :
+    if datatype == 'iapp' :
         sounding_inputs = iapp_sounder(input_file_list,pres_0=pressure)
-    elif datatype == 'MIRS' :
+    elif datatype == 'mirs' :
         sounding_inputs = mirs_sounder(input_file_list,pres_0=pressure)
-    elif datatype == 'HSRTV' :
+    elif datatype == 'hsrtv' :
         sounding_inputs = hsrtv_sounder(input_file_list,pres_0=pressure)
-    elif datatype == 'NUCAPS' :
+    elif datatype == 'nucaps' :
         sounding_inputs = nucaps_sounder(input_file_list,pres_0=pressure)
     else:
         pass
@@ -2015,13 +2040,18 @@ def main():
     else:
         file_suffix = "{}_{}_{}mb".format(datatype,dataset,pres_0)
 
-    if output_file==None and outputFilePrefix==None :
+    LOG.info('output_file = {}'.format(output_file))
+    LOG.info('outputFilePrefix = {}'.format(outputFilePrefix))
+    LOG.info('input_file = {}'.format(input_file))
+    LOG.info('file_suffix = {}'.format(file_suffix))
+
+    if output_file is None and outputFilePrefix is None :
         output_file = "{}.{}.png".format(input_file,file_suffix)
-    if output_file!=None and outputFilePrefix==None :
+    if output_file is not None and outputFilePrefix is None :
         pass
-    if output_file==None and outputFilePrefix!=None :
+    if output_file is None and outputFilePrefix is not None :
         output_file = "{}_{}.png".format(outputFilePrefix,file_suffix)
-    if output_file!=None and outputFilePrefix!=None :
+    if output_file is not None and outputFilePrefix is not None :
         output_file = "{}_{}.png".format(outputFilePrefix,file_suffix)
 
     # Default plot labels
@@ -2051,9 +2081,7 @@ def main():
     # Create the plot
     retval = plotMapData(lats,lons,data,data_mask,output_file,**plot_options)
 
-    print ""
     return retval
 
-
 if __name__=='__main__':
-    sys.exit(main())  
+    sys.exit(main())

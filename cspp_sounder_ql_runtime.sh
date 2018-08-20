@@ -4,7 +4,7 @@
 # Copyright 2014-2018, University of Wisconsin Regents.
 # Licensed under the GNU GPLv3.
 
-export DPE_VER=CSPP_SOUNDER_QL_1_1
+export DPE_VER=CSPP_SOUNDER_QL_1_2
 
 # python interpreter including numpy, h5py, pytables, scipy; used by CSPP scripts
 export PY=${CSPP_SOUNDER_QL_HOME}/vendor/env/bin/python
