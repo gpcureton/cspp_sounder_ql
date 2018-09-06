@@ -28,6 +28,15 @@ Linux terminal commands included in these instructions are for the bash shell.
 
 Linux terminal commands included in these instructions are for the bash shell.
 
+### Acknowledgements
+
+This package relies heavily on various projects, which include:
+
+- Matplotlib v2.1.2 (https://doi.org/10.5281/zenodo.1154287)
+- xarray v0.10.8 (https://doi.org/10.5281/zenodo.598201)
+- netCDF4-python v1.3.1 (http://unidata.github.io/netcdf4-python/)
+- h5py v2.7.1 (https://github.com/h5py)
+
 ### Disclaimer
 
 Original scripts and automation included as part of this package are distributed under the GNU
