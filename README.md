@@ -32,6 +32,7 @@ Linux terminal commands included in these instructions are for the bash shell.
 
 This package relies heavily on various projects, which include:
 
+- MetPy v0.7.0 (https://doi.org/10.5065/D6WW7G29)
 - Matplotlib v2.1.2 (https://doi.org/10.5281/zenodo.1154287)
 - xarray v0.10.8 (https://doi.org/10.5281/zenodo.598201)
 - netCDF4-python v1.3.1 (http://unidata.github.io/netcdf4-python/)
