@@ -121,22 +121,24 @@ def argument_parser_image():
             ('iapp', 'International TOVS Processing Package'),
             ('mirs', 'Microwave Integrated Retrieval System'),
             ('hsrtv', 'CrIS, AIRS and IASI Hyperspectral Retrieval Software'),
+            ('heap', 'Hyper-Spectral Enterprise Algorithm Package'),
             ('nucaps', 'NOAA Unique Combined Atmospheric Processing System')
             ])
     prodChoices=['temp','temp_gdas','wvap','wvap_gdas','dwpt','relh','relh_gdas',
-                 'ctp','ctt','2temp','cold_air_aloft']
+                 'ctp','ctt']
+                 # 'ctp','ctt','2temp','cold_air_aloft']
     map_res_choice = ['c','l','i']
     plot_type_choice = ['image','slice']
     map_proj_choice = {
-            'cea':     'Cylindrical Equal Area',
+            'eckiv':   'Eckert IV Equal Area',
             'lcc':     'Lambert Conformal',
             'ortho':   'Orthographic',
             'geos':    'Geostationary',
             'npstere': 'North-Polar Stereographic',
             'spstere': 'South-Polar Stereographic',
-            'cyl':     'Cylindrical Equidistant',
+            'plat':    'PlateCarree',
             'sinu':    'Sinusoidal',
-            'merc':    'Mercator'
+            'moll':    'Mollweide'
             }
 
     defaults = {
@@ -154,9 +156,10 @@ def argument_parser_image():
             'yMax'  : None,
             'bounding_lat':0.,
             'image_size' : [7.5, 7.5],
-            'map_axis' : [0.10, 0.15, 0.80, 0.8],
+            'map_axis' : [0.05, 0.15, 0.90, 0.75 ],
             'cbar_axis' : [0.10 , 0.05, 0.8 , 0.05],
             'scatter_plot':False,
+            'global':False,
             'pointSize':1,
             'font_scale':1.,
             'cmap':None,
@@ -216,6 +219,8 @@ def argument_parser_image():
             """[*left*, *bottom*, *width*, *height*] where all\nquantities are in fractions of """ \
             """figure width and height. [default: '{}']""".format(defaults["cbar_axis"])
     help_strings['scatter_plot'] = "Generate the plot using a scatterplot approach."
+    help_strings['global'] = "Plot the maximum extent of the desired projection, rather than just """ \
+            """the extent\nof the data. [default: '{}']""".format(defaults["global"])
     help_strings['logscale'] = """Plot the dataset using a logarithmic scale."""
     help_strings['no_logscale'] = """Plot the dataset using a linear scale."""
     help_strings['pointSize'] = """Size of the plot point used to represent each pixel. """ \
@@ -279,7 +284,7 @@ def argument_parser_image():
         'help': help_strings['dataset']
     }
 
-    parser_lists['plot_type'] = ['--plot_type']
+    parser_lists['plot_type'] = ['--plot-type']
     parser_dicts['plot_type'] = {
         'action': "store",
         'dest': "plot_type",
@@ -343,7 +348,7 @@ def argument_parser_image():
         'help': help_strings['dpi'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['lat_0'] = ['--lat_0']
+    parser_lists['lat_0'] = ['--lat-0']
     parser_dicts['lat_0'] = {
         'action': "store",
         'dest': "lat_0",
@@ -351,7 +356,7 @@ def argument_parser_image():
         'help': help_strings['lat_0'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['lon_0'] = ['--lon_0']
+    parser_lists['lon_0'] = ['--lon-0']
     parser_dicts['lon_0'] = {
         'action': "store",
         'dest': "lon_0",
@@ -415,7 +420,7 @@ def argument_parser_image():
         'help': help_strings['footprint'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['bounding_lat'] = ['--bounding_lat']
+    parser_lists['bounding_lat'] = ['--bounding-lat']
     parser_dicts['bounding_lat'] = {
         'action': "store",
         'dest': "bounding_lat",
@@ -434,7 +439,7 @@ def argument_parser_image():
         'help': help_strings['viewport'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['image_size'] = ['--image_size']
+    parser_lists['image_size'] = ['--image-size']
     parser_dicts['image_size'] = {
         'action': "store",
         'dest': "image_size",
@@ -445,7 +450,7 @@ def argument_parser_image():
         'help': help_strings['image_size'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['map_axis'] = ['--map_axis']
+    parser_lists['map_axis'] = ['--map-axis']
     parser_dicts['map_axis'] = {
         'action': "store",
         'dest': "map_axis",
@@ -456,7 +461,7 @@ def argument_parser_image():
         'help': help_strings['map_axis'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['cbar_axis'] = ['--cbar_axis']
+    parser_lists['cbar_axis'] = ['--cbar-axis']
     parser_dicts['cbar_axis'] = {
         'action': "store",
         'dest': "cbar_axis",
@@ -467,12 +472,20 @@ def argument_parser_image():
         'help': help_strings['cbar_axis'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['scatter_plot'] = ['--scatter_plot']
+    parser_lists['scatter_plot'] = ['--scatter-plot']
     parser_dicts['scatter_plot'] = {
         'action': "store_true",
         'dest': "doScatterPlot",
         'default': defaults["scatter_plot"],
         'help': help_strings['scatter_plot']
+    }
+
+    parser_lists['global'] = ['--global']
+    parser_dicts['global'] = {
+        'action': "store_true",
+        'dest': "plot_global",
+        'default': defaults["global"],
+        'help': help_strings['global']
     }
 
     parser_lists['logscale'] = ['--logscale']
@@ -482,7 +495,7 @@ def argument_parser_image():
         'help': help_strings['logscale']
     }
 
-    parser_lists['no_logscale'] = ['--no_logscale']
+    parser_lists['no_logscale'] = ['--no-logscale']
     parser_dicts['no_logscale'] = {
         'action': "store_true",
         'dest': "no_logscale",
@@ -498,7 +511,7 @@ def argument_parser_image():
         'help': help_strings['pointSize'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['font_scale'] = ['--font_scale']
+    parser_lists['font_scale'] = ['--font-scale']
     parser_dicts['font_scale'] = {
         'action': "store",
         'dest': "font_scale",
@@ -516,7 +529,7 @@ def argument_parser_image():
         'help': help_strings['cmap'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['plot_title'] = ['--plot_title']
+    parser_lists['plot_title'] = ['--plot-title']
     parser_dicts['plot_title'] = {
         'action': "store",
         'dest': "plot_title",
@@ -524,7 +537,7 @@ def argument_parser_image():
         'help': help_strings['plot_title'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['cbar_title'] = ['--cbar_title']
+    parser_lists['cbar_title'] = ['--cbar-title']
     parser_dicts['cbar_title'] = {
         'action': "store",
         'dest': "cbar_title",
@@ -541,7 +554,7 @@ def argument_parser_image():
         'help': help_strings['scale'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['map_res'] = ['-m','--map_res']
+    parser_lists['map_res'] = ['-m','--map-res']
     parser_dicts['map_res'] = {
         'action': "store",
         'dest': "map_res",
@@ -561,7 +574,7 @@ def argument_parser_image():
         'help': help_strings['proj'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['output_file'] = ['-o','--output_file']
+    parser_lists['output_file'] = ['-o','--output-file']
     parser_dicts['output_file'] = {
         'action': "store",
         'dest': "output_file",
@@ -570,7 +583,7 @@ def argument_parser_image():
         'help': help_strings['output_file']
     }
 
-    parser_lists['outputFilePrefix'] = ['-O','--output_file_prefix']
+    parser_lists['outputFilePrefix'] = ['-O','--output-file-prefix']
     parser_dicts['outputFilePrefix'] = {
         'action': "store",
         'dest': "outputFilePrefix",
@@ -581,7 +594,7 @@ def argument_parser_image():
 
     # Initialise the parser.
     desc = '''Create a plot of temperature, dewpoint or something else at a particular ''' \
-            '''pressure or elevation level.\nSupports IAPP, MIRS, HSRTV and NUCAPS files.'''
+            '''pressure or elevation level.\nSupports IAPP, MIRS, HSRTV, HEAP and NUCAPS files.'''
     epilog = ''
     parser = argparse.ArgumentParser(description=desc,
                                      formatter_class=argparse.RawTextHelpFormatter,
