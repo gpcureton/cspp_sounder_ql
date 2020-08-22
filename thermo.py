@@ -211,19 +211,19 @@ def dewpoint_AB(T_K,RH) :
     #c = 243.12 # deg C
 
     if ((T > -40.) and (T <= 0.)) :
-        #print "{0:5.2f} is > -40. and {0:5.2f} is  <= 0.". \
+        #print("{0:5.2f} is > -40. and {0:5.2f} is  <= 0."). \
                 #format(T)
         a = 6.1121 # millibars
         b = 17.368
         c = 238.88 # deg C
     elif ((T > 0.) and (T <= 50.)) : 
-        #print "{0:5.2f} is > 0. and {0:5.2f} is <= 50.". \
+        #print("{0:5.2f} is > 0. and {0:5.2f} is <= 50."). \
                 #format(T)
         a = 6.1121 # millibars
         b = 17.966
         c = 247.15 # deg C
     else :
-        #print "Temperature {} degC ({} K) out of range, using defaults...". \
+        #print("Temperature {} degC ({} K) out of range, using defaults..."). \
                 #format(T,T_K)
         a = 6.1121 # millibars
         b = 18.678
@@ -264,7 +264,7 @@ def Theta(tempk,pres,pref=100000.):
         minpres=pres
 
     if minpres<2000:
-        print "WARNING: P<2000 Pa; did you input a value in hPa?"
+        print("WARNING: P<2000 Pa; did you input a value in hPa?")
 
     return tempk*(pref/pres)**(Rs_da/Cp_da)
 
@@ -278,7 +278,7 @@ def TempK(theta,pres,pref=100000.):
         minpres=pres
 
     if minpres<2000:
-        print "WARNING: P<2000 Pa; did you input a value in hPa?"
+        print("WARNING: P<2000 Pa; did you input a value in hPa?")
 
     return theta*(pres/pref)**(Rs_da/Cp_da)
 

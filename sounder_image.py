@@ -65,15 +65,8 @@ import matplotlib.cm as cm
 from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
 
-matplotlib.use('Agg')
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-
-# This must come *after* the backend is specified.
-import matplotlib.pyplot as ppl
-
-from mpl_toolkits.basemap import Basemap
-
-#import scipy.spatial as ss
+# matplotlib.use('Agg')
+# from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 from netCDF4 import Dataset
 from netCDF4 import num2date
@@ -83,9 +76,9 @@ import sounder_image_data
 from thermo import dewhum
 from ql_common import granuleFiles
 #from ql_common import get_pressure_index
-from ql_common import plotMapDataContinuous, plotMapDataDiscrete
+from ql_common import plotMapDataContinuous, plotMapDataContinuous_cartopy, plotMapDataDiscrete
 from ql_common import set_plot_styles
-from ql_common import set_plot_navigation_bm as set_plot_navigation
+# from ql_common import set_plot_navigation_bm as set_plot_navigation
 
 import sounder_packages
 
@@ -147,10 +140,9 @@ def main():
     LOG.info("Input pressure = {}".format(pressure))
     LOG.info("Input elevation = {}".format(elevation))
 
-    # Get all of the required command line options for the required satellite...
+    # Get all of the required command line options for the required souder package...
     LOG.info("datatype = {}".format(datatype))
     LOG.info("dataset = {}".format(dataset))
-    sounder_package_cfg = sounder_packages.sounder_package_cfg[datatype]
     sounder_args = (input_file_list,dataset,plot_type)
     sounder_kwargs = {'pres_0':pressure,
                       'elev_0':elevation,
@@ -158,11 +150,13 @@ def main():
                       'lon_0':None,
                       'footprint':footprint
                       }
-    sounder_obj = sounder_package_cfg(*sounder_args,**sounder_kwargs)
+
+    # Get a reference to the desired sounder package class, and instantiate
+    sounder_package_ref = sounder_packages.sounder_package_ref[datatype]
+    sounder_obj = sounder_package_ref(*sounder_args,**sounder_kwargs)
 
     LOG.info("sounder_obj.pres_0 = {}".format(sounder_obj.pres_0))
     LOG.info("sounder_obj.elev_0 = {}".format(sounder_obj.elev_0))
-    #sys.exit(0) # DEBUG
 
     pres_0 = sounder_obj.pres_0
     elev_0 = sounder_obj.elev_0
@@ -182,7 +176,6 @@ def main():
 
     LOG.debug(sounder_obj.datasets['file_attrs'].items())
 
-
     input_file = os.path.basename(input_file_list[0])
 
     # Get the dataset options
@@ -194,8 +187,6 @@ def main():
 
     for key in dataset_options.keys():
         LOG.debug("dataset_options['{}'] = {}".format(key,dataset_options[key]))
-
-    #sys.exit(0)
 
     # Determine the filename
     if dataset=='ctp' or dataset=='ctt' or plot_type=='slice':
@@ -222,14 +213,12 @@ def main():
     dataset = args.dataset
 
     # Set the navigation
-    plot_nav_options = set_plot_navigation(lats,lons,sounder_obj, args)
-    for key in plot_nav_options.keys():
-        LOG.info("plot_nav_options['{}'] = {}".format(key,plot_nav_options[key]))
+    # plot_nav_options = set_plot_navigation(lats,lons,sounder_obj, args)
+    # for key in plot_nav_options.keys():
+        # LOG.info("plot_nav_options['{}'] = {}".format(key,plot_nav_options[key]))
 
     # Set the plot styles
-    plot_style_options = set_plot_styles(sounder_obj,dataset,dataset_options, args)
-
-    #sys.exit(0)
+    plot_style_options = set_plot_styles(sounder_obj, dataset, dataset_options, args)
 
     # Get pointers to the desired plotting routines
     plot_image = plot_style_options['plot_image']
@@ -268,12 +257,12 @@ def main():
     # Create the plot
     if plot_type == 'image':
         retval = plot_map(lats, lons, data, data_mask,
-                output_file, dataset_options, plot_style_options,plot_options)
+                output_file, dataset_options, plot_style_options, plot_options)
     if plot_type == 'slice':
         retval = plot_slice(lat_col, lon_col, lats, lons, pressure, elevation,
-                data, data_mask, output_file, dataset_options, plot_style_options,plot_options)
+                data, data_mask, output_file, dataset_options, plot_style_options, plot_options)
 
-    print ""
+    print("")
     return retval
 
 

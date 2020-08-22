@@ -34,7 +34,7 @@ from datetime import datetime,timedelta
 
 import numpy as np
 from numpy import ma
-import copy
+from copy import copy
 
 from scipy import interpolate
 import scipy.spatial as ss
@@ -44,9 +44,9 @@ import matplotlib.cm as cm
 from matplotlib.colors import LogNorm
 from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
-from matplotlib.ticker import LogLocator,LogFormatter
-from matplotlib.mlab import griddata
-from scipy.interpolate import griddata as griddata_sp
+from matplotlib.ticker import LogLocator, LogFormatter
+# from matplotlib.mlab import griddata
+from scipy.interpolate import griddata
 
 matplotlib.use('Agg')
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
@@ -54,13 +54,17 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 # This must come *after* the backend is specified.
 import matplotlib.pyplot as ppl
 
-from mpl_toolkits.basemap import Basemap
+import cartopy.crs as ccrs
+# from cartopy.mpl.gridliner import LATITUDE_FORMATTER, LONGITUDE_FORMATTER
+import cartopy.feature as cfeature
+# from cartopy.util import add_cyclic_point
+# import shapely.geometry as sgeom
+
+# from mpl_toolkits.basemap import Basemap
 
 from netCDF4 import Dataset
 from netCDF4 import num2date
 import h5py
-
-#from basemap_utils import drawparallels,drawmeridians
 
 # every module should have a LOG object
 LOG = logging.getLogger(__file__)
@@ -108,8 +112,7 @@ class Datafile_NetCDF():
         self.data_dict = self.file_obj.variables
 
         # List of dataset names
-        self.datanames = self.data_dict.keys()
-        self.datanames.sort()
+        self.datanames = sorted(list(self.data_dict))
 
 
     class Dataset():
@@ -169,8 +172,7 @@ class Datafile_HDF5():
             self.data_dict[key] = dset_obj
 
         # List of dataset names
-        self.datanames = self.file_obj.keys()
-        self.datanames.sort()
+        self.datanames = sorted(self.file_obj.keys())
 
 
     class Dataset():
@@ -288,7 +290,9 @@ def get_pressure_index(pressure,pres_0,kd_dist=10.):
         LOG.info("Searching for pressure {:4.2f}".format(pres_0))
 
         # Construct the kdtree
-        points = zip(pressure_masked)
+        LOG.debug(f"pressure_masked = {pressure_masked}")
+        points = list(zip(pressure_masked))
+        LOG.debug(f"points = {points}")
         tree = ss.KDTree(points)
 
         # get index of each point which distance from (lon_0,lat_0) is under 1
@@ -305,7 +309,7 @@ def get_pressure_index(pressure,pres_0,kd_dist=10.):
         LOG.info("Retrieved pressure is {:4.2f} mb".\
                 format(pressure[level].squeeze()))
 
-    except Exception, err :
+    except Exception as err :
         LOG.warn("{}".format(err))
         LOG.debug(traceback.format_exc())
 
@@ -323,14 +327,14 @@ def get_pressure_level(pressure,pres_0):
     level = get_pressure_index(pressure, pres_0, kd_dist=pressure_scope)
 
     attempts = 1
-    while (level==None and attempts<10):
+    while (level is None and attempts<10):
         pressure_scope *= 1.1
         LOG.debug("Scope of pressure level search is {} hPa".format(pressure_scope))
         LOG.debug("pressure, pres_0 = {},{}".format(pressure, pres_0))
         level = get_pressure_index(pressure, pres_0, kd_dist=pressure_scope)
         attempts += 1
 
-    if level==None:
+    if level is None:
         raise Exception("No suitable pressure level found, aborting...")
 
     LOG.debug("Retrieved level = {}".format(level))
@@ -356,9 +360,8 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
 
         if (lat_0==None) or (lon_0==None):
             # Non lat/lon pair given, use the central unmasked values.
-            col_offset = 0
             row_idx = int(np.floor(nrows/2.))
-            col_idx = int(np.floor(ncols/2.)) - col_offset
+            col_idx = int(np.floor(ncols/2.))
             lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
             lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
             LOG.info("No lat/lon pair given, using ({:4.2f},{:4.2f})".
@@ -386,284 +389,280 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
                 format(lat_0,lon_0))
 
         # Construct the kdtree
-        points = zip(lon_masked, lat_masked)
-        tree = ss.KDTree(points)
+        tree = ss.KDTree(list(zip(lon.ravel(), lat.ravel())))
 
         # get index of each point which distance from (lon_0,lat_0) is under 1
-        a = tree.query_ball_point([lon_0, lat_0], 1.0)
-        if a == []:
+        dist, dist_idx = tree.query([lon_0, lat_0], distance_upper_bound=1.)
+        if dist == np.inf:
             LOG.error("Specified coordinates ({:4.2f},{:4.2f}) not found...".\
-                    format(lat_0,lon_0))
+                    format(lat_0, lon_0))
             return None,None
 
-        row = [rows_masked[i] for i in a][0]
-        col = [cols_masked[i] for i in a][0]
+        row = rows_masked[dist_idx]
+        col = cols_masked[dist_idx]
 
         LOG.debug("Row index is {}".format(row))
         LOG.debug("Col index is {}".format(col))
 
-        lat_0 = lat[row,col].squeeze()
-        lon_0 = lon[row,col].squeeze()
+        LOG.debug("Retrieved latitude is {:4.2f}".format(lat[row,col].squeeze()))
+        LOG.debug("Retrieved longitude is {:4.2f}".format(lon[row,col].squeeze()))
 
-        LOG.debug("Retrieved latitude is {:4.2f}".format(lat_0))
-        LOG.debug("Retrieved longitude is {:4.2f}".format(lon_0))
-
-    except Exception, err :
-        LOG.warn("{}".format(err))
+    except Exception as err :
+        LOG.warning("{}".format(err))
         LOG.debug(traceback.format_exc())
 
-    return row,col,lat_0,lon_0
+    return row,col
 
 
-def set_plot_navigation_proj(lats,lons,goes_l1_obj, options):
-    """
-    Collects the various navigation options and does any required tweaking
-    before passing to the plotting method.
+# def set_plot_navigation_proj(lats,lons,goes_l1_obj, options):
+    # """
+    # Collects the various navigation options and does any required tweaking
+    # before passing to the plotting method.
 
-    Uses Proj to generate the map projection.
-    """
-    # Here are some attributes from the geocat Level-1 files...
-    from mpl_toolkits.basemap.pyproj import Proj
+    # Uses Proj to generate the map projection.
+    # """
+    # # Here are some attributes from the geocat Level-1 files...
+    # from mpl_toolkits.basemap.pyproj import Proj
 
-    nrows,ncols = lats.shape[0],lats.shape[1]
-    nrows_div2,ncols_div2 = np.floor_divide(nrows,2),np.floor_divide(ncols,2)
-    LOG.debug('lats.shape = {}'.format(lats.shape))
-    LOG.debug('nrows,ncols = ({},{})'.format(nrows,ncols))
-    LOG.debug('nrows_div2,ncols_div2 = ({},{})'.format(nrows_div2,ncols_div2))
+    # nrows,ncols = lats.shape[0],lats.shape[1]
+    # nrows_div2,ncols_div2 = np.floor_divide(nrows,2),np.floor_divide(ncols,2)
+    # LOG.debug('lats.shape = {}'.format(lats.shape))
+    # LOG.debug('nrows,ncols = ({},{})'.format(nrows,ncols))
+    # LOG.debug('nrows_div2,ncols_div2 = ({},{})'.format(nrows_div2,ncols_div2))
 
-    corners = [(0,0), (0,-1), (-1,-1), (-1,0)]
+    # corners = [(0,0), (0,-1), (-1,-1), (-1,0)]
 
-    for crnr,crnr_idx in zip(range(4),corners):
-        LOG.debug("({}) (lon,lat):({},{})".format(crnr,lons[crnr_idx],lats[crnr_idx]))
-
-
-    subsatellite_longitude = goes_l1_obj.attrs['Subsatellite_Longitude']
-    LOG.debug(' File subsatellite_Longitude = {}'.format(subsatellite_longitude))
-
-    plot_nav_options = {}
-
-    p1 = Proj("+proj=geos +h=35774290 +a= 6378137 +b= 6378137 +lon_0=-75 +units=meters +no_defs")
-
-    # Western edge
-    x,y = p1(lons[:,0],lats[:,0])
-    west_x = np.average(x.compressed())
-    # Eastern edge
-    x,y = p1(lons[:,-1],lats[:,-1])
-    east_x = np.average(x.compressed())
-    # Northern edge
-    x,y = p1(lons[0,:],lats[0,:])
-    north_y = np.average(y.compressed())
-    # Southern edge
-    x,y = p1(lons[-1,:],lats[-1,:])
-    south_y = np.average(y.compressed())
-
-    corner_x_fallback = [west_x,east_x,east_x,west_x]
-    corner_y_fallback = [north_y,north_y,south_y,south_y]
-
-    LOG.debug("(west_x ,east_x ):({:10.1f},{:10.1f})".format(west_x,east_x))
-    LOG.debug("(north_y,south_y):({:10.1f},{:10.1f})".format(north_y,south_y))
-
-    crnr_x_names_proj = ['ulcrnrx_proj','urcrnrx_proj','lrcrnrx_proj','llcrnrx_proj']
-    crnr_y_names_proj = ['ulcrnry_proj','urcrnry_proj','lrcrnry_proj','llcrnry_proj']
-
-    # The maximum extent of the full disk in the x and y directions
-    plot_nav_options['extent_x'] = p1(subsatellite_longitude+81.,0)[0]*2.
-    plot_nav_options['extent_y'] = p1(subsatellite_longitude,81.)[1]*2.
-    LOG.debug("(extent_x,extent_y):({},{})".format(plot_nav_options['extent_x'],plot_nav_options['extent_y']))
-
-    # Generate the corner-origin coordinates from Basemap object...
-    for crnr in range(4):
-        crnr_idx = corners[crnr]
-        lon,lat = lons[crnr_idx], lats[crnr_idx]
-        if ma.is_masked(lon) and ma.is_masked(lat):
-            x,y = corner_x_fallback[crnr],corner_y_fallback[crnr]
-        else:
-            x,y = p1(lon, lat)
-        #if crnr_x_names_proj[crnr] is not None:
-        plot_nav_options[crnr_x_names_proj[crnr]] = x
-        #if crnr_y_names_proj[crnr] is not None:
-        plot_nav_options[crnr_y_names_proj[crnr]] = y
-        LOG.debug(
-                "({}) (lon,lat):({},{}), (x,y): ({:10.1f},{:10.1f})".format(crnr,lon,lat,x,y))
-
-    # Default plot options
-    plot_nav_options['llcrnrx'] = options.llcrnrx
-    plot_nav_options['llcrnry'] = options.llcrnry
-    plot_nav_options['urcrnrx'] = options.urcrnrx
-    plot_nav_options['urcrnry'] = options.urcrnry
+    # for crnr,crnr_idx in zip(range(4),corners):
+        # LOG.debug("({}) (lon,lat):({},{})".format(crnr,lons[crnr_idx],lats[crnr_idx]))
 
 
-    return plot_nav_options
+    # subsatellite_longitude = goes_l1_obj.attrs['Subsatellite_Longitude']
+    # LOG.debug(' File subsatellite_Longitude = {}'.format(subsatellite_longitude))
+
+    # plot_nav_options = {}
+
+    # p1 = Proj("+proj=geos +h=35774290 +a= 6378137 +b= 6378137 +lon_0=-75 +units=meters +no_defs")
+
+    # # Western edge
+    # x,y = p1(lons[:,0],lats[:,0])
+    # west_x = np.average(x.compressed())
+    # # Eastern edge
+    # x,y = p1(lons[:,-1],lats[:,-1])
+    # east_x = np.average(x.compressed())
+    # # Northern edge
+    # x,y = p1(lons[0,:],lats[0,:])
+    # north_y = np.average(y.compressed())
+    # # Southern edge
+    # x,y = p1(lons[-1,:],lats[-1,:])
+    # south_y = np.average(y.compressed())
+
+    # corner_x_fallback = [west_x,east_x,east_x,west_x]
+    # corner_y_fallback = [north_y,north_y,south_y,south_y]
+
+    # LOG.debug("(west_x ,east_x ):({:10.1f},{:10.1f})".format(west_x,east_x))
+    # LOG.debug("(north_y,south_y):({:10.1f},{:10.1f})".format(north_y,south_y))
+
+    # crnr_x_names_proj = ['ulcrnrx_proj','urcrnrx_proj','lrcrnrx_proj','llcrnrx_proj']
+    # crnr_y_names_proj = ['ulcrnry_proj','urcrnry_proj','lrcrnry_proj','llcrnry_proj']
+
+    # # The maximum extent of the full disk in the x and y directions
+    # plot_nav_options['extent_x'] = p1(subsatellite_longitude+81.,0)[0]*2.
+    # plot_nav_options['extent_y'] = p1(subsatellite_longitude,81.)[1]*2.
+    # LOG.debug("(extent_x,extent_y):({},{})".format(plot_nav_options['extent_x'],plot_nav_options['extent_y']))
+
+    # # Generate the corner-origin coordinates from Basemap object...
+    # for crnr in range(4):
+        # crnr_idx = corners[crnr]
+        # lon,lat = lons[crnr_idx], lats[crnr_idx]
+        # if ma.is_masked(lon) and ma.is_masked(lat):
+            # x,y = corner_x_fallback[crnr],corner_y_fallback[crnr]
+        # else:
+            # x,y = p1(lon, lat)
+        # #if crnr_x_names_proj[crnr] is not None:
+        # plot_nav_options[crnr_x_names_proj[crnr]] = x
+        # #if crnr_y_names_proj[crnr] is not None:
+        # plot_nav_options[crnr_y_names_proj[crnr]] = y
+        # LOG.debug(
+                # "({}) (lon,lat):({},{}), (x,y): ({:10.1f},{:10.1f})".format(crnr,lon,lat,x,y))
+
+    # # Default plot options
+    # plot_nav_options['llcrnrx'] = options.llcrnrx
+    # plot_nav_options['llcrnry'] = options.llcrnry
+    # plot_nav_options['urcrnrx'] = options.urcrnrx
+    # plot_nav_options['urcrnry'] = options.urcrnry
 
 
-def set_plot_navigation_bm(lats,lons,dfile_obj, options):
-    """
-    Collects the various navigation options and does any required tweaking
-    before passing to the plotting method.
-
-    Uses Basemap to generate the map projection.
-    """
-
-    nrows,ncols = lats.shape[0],lats.shape[1]
-    nrows_div2,ncols_div2 = np.floor_divide(nrows,2),np.floor_divide(ncols,2)
-    LOG.debug('lats.shape = {}'.format(lats.shape))
-    LOG.debug('nrows,ncols = ({},{})'.format(nrows,ncols))
-    LOG.debug('nrows_div2,ncols_div2 = ({},{})'.format(nrows_div2,ncols_div2))
-
-    corners = [(0,0), (0,-1), (-1,-1), (-1,0)]
-
-    for crnr,crnr_idx in zip(range(4),corners):
-        LOG.debug("({}) (lon,lat):({},{})".format(crnr,lons[crnr_idx],lats[crnr_idx]))
-
-    return {}
-
-    #subsatellite_longitude = goes_l1_obj.attrs['Subsatellite_Longitude']
-    #LOG.info('File subsatellite_Longitude = {:6.1f}'.format(subsatellite_longitude))
-
-    m1 = Basemap(projection='geos',lon_0=subsatellite_longitude,resolution=None)
-
-    plot_nav_options = {}
-
-    # The maximum extent of the full disk in the x and y directions
-    plot_nav_options['extent_x'] = m1.urcrnrx
-    plot_nav_options['extent_y'] = m1.urcrnry
-    LOG.debug("(extent_x,extent_y):({},{})".format(plot_nav_options['extent_x'],plot_nav_options['extent_y']))
-
-    # Compute coordinates of sub-satellite point
-    x_subsat,y_subsat = m1(subsatellite_longitude,0)
-    LOG.debug("(x_subsat,y_subsat):({},{})".format(x_subsat,y_subsat))
-
-    is_full_disk = False
-    if ma.is_masked(lats[corners[0]]) and ma.is_masked(lats[corners[1]]) and \
-       ma.is_masked(lats[corners[2]]) and ma.is_masked(lats[corners[3]]):
-        is_full_disk = True
-
-    if options.region == "FD":
-        is_full_disk = True
-
-    if is_full_disk:
-
-        LOG.info("This image is full disk")
-
-        plot_nav_options['urcrnrx_map'] = plot_nav_options['extent_x'] - x_subsat
-        plot_nav_options['urcrnry_map'] = plot_nav_options['extent_y'] - y_subsat
-        plot_nav_options['llcrnrx_map'] = 0. - x_subsat
-        plot_nav_options['llcrnry_map'] = 0  - y_subsat
-
-    else:
-        LOG.info("This image is NOT full disk")
-
-        # Get the north, south, east and west edges of the plot region (in map
-        # coordinates). Check that the edge isnn't all missing, and step towards
-        # center as necessary.
-
-        # Western edge
-        we_col = 0
-        while True:
-            LOG.debug("Checking edge for we_col = {}".format(we_col))
-            x,y = m1(lons[:,we_col],lats[:,we_col])
-            x_compressed = x.compressed()
-            #LOG.debug("x_compressed:{}".format(x_compressed))
-            if (len(x_compressed) == 0):
-                LOG.debug("No Disk! ({})".format(we_col))
-                we_col = we_col + 1
-            else :
-                LOG.debug("Checking complete: we_col = {}".format(we_col))
-                break
-
-        west_x = np.average(x_compressed)
-
-        # Eastern edge
-
-        ee_col = -1
-        while True:
-            LOG.debug("Checking edge for ee_col = {}".format(ee_col))
-            x,y = m1(lons[:,ee_col],lats[:,ee_col])
-            x_compressed = x.compressed()
-            #LOG.debug("x_compressed:{}".format(x_compressed))
-            if (len(x_compressed) == 0):
-                LOG.debug("No Disk! ({})".format(ee_col))
-                ee_col = ee_col - 1
-            else :
-                LOG.debug("Checking complete: ee_col = {}".format(ee_col))
-                break
-
-        east_x = np.average(x_compressed)
-
-        # Northern edge
-        ne_row = 0
-        while True:
-            LOG.debug("Checking edge for ne_row = {}".format(ne_row))
-            x,y = m1(lons[ne_row,:],lats[ne_row,:])
-            y_compressed = y.compressed()
-            #LOG.debug("y_compressed:{}".format(y_compressed))
-            if (len(y_compressed) == 0):
-                LOG.debug("No Disk! ({})".format(ne_row))
-                ne_row = ne_row + 1
-            else :
-                LOG.debug("Checking complete: ne_row = {}".format(ne_row))
-                break
-
-        north_y = np.average(y_compressed)
-
-        # Southern edge
-        se_row = -1
-        while True:
-            LOG.debug("Checking edge for se_row = {}".format(se_row))
-            x,y = m1(lons[se_row,:],lats[se_row,:])
-            y_compressed = y.compressed()
-            #LOG.debug("y_compressed:{}".format(y_compressed))
-            if (len(y_compressed) == 0):
-                LOG.debug("No Disk! ({})".format(se_row))
-                se_row = se_row - 1
-            else :
-                LOG.debug("Checking complete: se_row = {}".format(se_row))
-                break
-
-        south_y = np.average(y_compressed)
+    # return plot_nav_options
 
 
-        corner_x_fallback = [west_x,east_x,east_x,west_x]
-        corner_y_fallback = [north_y,north_y,south_y,south_y]
+# def set_plot_navigation_bm(lats,lons,dfile_obj, options):
+    # """
+    # Collects the various navigation options and does any required tweaking
+    # before passing to the plotting method.
 
-        LOG.debug("(west_x ,east_x ):({:10.1f},{:10.1f})".format(west_x,east_x))
-        LOG.debug("(north_y,south_y):({:10.1f},{:10.1f})".format(north_y,south_y))
+    # Uses Basemap to generate the map projection.
+    # """
 
-        crnr_x_names = ['ulcrnrx','urcrnrx','lrcrnrx','llcrnrx']
-        crnr_y_names = ['ulcrnry','urcrnry','lrcrnry','llcrnry']
+    # nrows,ncols = lats.shape[0],lats.shape[1]
+    # nrows_div2,ncols_div2 = np.floor_divide(nrows,2),np.floor_divide(ncols,2)
+    # LOG.debug('lats.shape = {}'.format(lats.shape))
+    # LOG.debug('nrows,ncols = ({},{})'.format(nrows,ncols))
+    # LOG.debug('nrows_div2,ncols_div2 = ({},{})'.format(nrows_div2,ncols_div2))
 
-        # Generate the center-origin coordinates from Proj object...
-        for crnr in range(4):
-            crnr_idx = corners[crnr]
-            lon,lat = lons[crnr_idx], lats[crnr_idx]
-            if ma.is_masked(lon) and ma.is_masked(lat):
-                x,y = corner_x_fallback[crnr],corner_y_fallback[crnr]
-            else:
-                x,y = m1(lon, lat)
-            plot_nav_options[crnr_x_names[crnr]] = x
-            plot_nav_options[crnr_y_names[crnr]] = y
-            LOG.debug(
-                    "({}) (lon,lat):({},{}), (x,y): ({:10.1f},{:10.1f})".format(crnr,lon,lat,x,y))
+    # corners = [(0,0), (0,-1), (-1,-1), (-1,0)]
 
-        plot_nav_options['ulcrnrx_map'] = plot_nav_options['ulcrnrx'] - x_subsat
-        plot_nav_options['ulcrnry_map'] = plot_nav_options['ulcrnry'] - y_subsat
-        plot_nav_options['urcrnrx_map'] = plot_nav_options['urcrnrx'] - x_subsat
-        plot_nav_options['urcrnry_map'] = plot_nav_options['urcrnry'] - y_subsat
-        plot_nav_options['lrcrnrx_map'] = plot_nav_options['lrcrnrx'] - x_subsat
-        plot_nav_options['lrcrnry_map'] = plot_nav_options['lrcrnry'] - y_subsat
-        plot_nav_options['llcrnrx_map'] = plot_nav_options['llcrnrx'] - x_subsat
-        plot_nav_options['llcrnry_map'] = plot_nav_options['llcrnry'] - y_subsat
+    # for crnr,crnr_idx in zip(range(4),corners):
+        # LOG.debug("({}) (lon,lat):({},{})".format(crnr,lons[crnr_idx],lats[crnr_idx]))
+
+    # return {}
+
+    # #subsatellite_longitude = goes_l1_obj.attrs['Subsatellite_Longitude']
+    # #LOG.info('File subsatellite_Longitude = {:6.1f}'.format(subsatellite_longitude))
+
+    # m1 = Basemap(projection='geos',lon_0=subsatellite_longitude,resolution=None)
+
+    # plot_nav_options = {}
+
+    # # The maximum extent of the full disk in the x and y directions
+    # plot_nav_options['extent_x'] = m1.urcrnrx
+    # plot_nav_options['extent_y'] = m1.urcrnry
+    # LOG.debug("(extent_x,extent_y):({},{})".format(plot_nav_options['extent_x'],plot_nav_options['extent_y']))
+
+    # # Compute coordinates of sub-satellite point
+    # x_subsat,y_subsat = m1(subsatellite_longitude,0)
+    # LOG.debug("(x_subsat,y_subsat):({},{})".format(x_subsat,y_subsat))
+
+    # is_full_disk = False
+    # if ma.is_masked(lats[corners[0]]) and ma.is_masked(lats[corners[1]]) and \
+       # ma.is_masked(lats[corners[2]]) and ma.is_masked(lats[corners[3]]):
+        # is_full_disk = True
+
+    # if options.region == "FD":
+        # is_full_disk = True
+
+    # if is_full_disk:
+
+        # LOG.info("This image is full disk")
+
+        # plot_nav_options['urcrnrx_map'] = plot_nav_options['extent_x'] - x_subsat
+        # plot_nav_options['urcrnry_map'] = plot_nav_options['extent_y'] - y_subsat
+        # plot_nav_options['llcrnrx_map'] = 0. - x_subsat
+        # plot_nav_options['llcrnry_map'] = 0  - y_subsat
+
+    # else:
+        # LOG.info("This image is NOT full disk")
+
+        # # Get the north, south, east and west edges of the plot region (in map
+        # # coordinates). Check that the edge isnn't all missing, and step towards
+        # # center as necessary.
+
+        # # Western edge
+        # we_col = 0
+        # while True:
+            # LOG.debug("Checking edge for we_col = {}".format(we_col))
+            # x,y = m1(lons[:,we_col],lats[:,we_col])
+            # x_compressed = x.compressed()
+            # #LOG.debug("x_compressed:{}".format(x_compressed))
+            # if (len(x_compressed) == 0):
+                # LOG.debug("No Disk! ({})".format(we_col))
+                # we_col = we_col + 1
+            # else :
+                # LOG.debug("Checking complete: we_col = {}".format(we_col))
+                # break
+
+        # west_x = np.average(x_compressed)
+
+        # # Eastern edge
+
+        # ee_col = -1
+        # while True:
+            # LOG.debug("Checking edge for ee_col = {}".format(ee_col))
+            # x,y = m1(lons[:,ee_col],lats[:,ee_col])
+            # x_compressed = x.compressed()
+            # #LOG.debug("x_compressed:{}".format(x_compressed))
+            # if (len(x_compressed) == 0):
+                # LOG.debug("No Disk! ({})".format(ee_col))
+                # ee_col = ee_col - 1
+            # else :
+                # LOG.debug("Checking complete: ee_col = {}".format(ee_col))
+                # break
+
+        # east_x = np.average(x_compressed)
+
+        # # Northern edge
+        # ne_row = 0
+        # while True:
+            # LOG.debug("Checking edge for ne_row = {}".format(ne_row))
+            # x,y = m1(lons[ne_row,:],lats[ne_row,:])
+            # y_compressed = y.compressed()
+            # #LOG.debug("y_compressed:{}".format(y_compressed))
+            # if (len(y_compressed) == 0):
+                # LOG.debug("No Disk! ({})".format(ne_row))
+                # ne_row = ne_row + 1
+            # else :
+                # LOG.debug("Checking complete: ne_row = {}".format(ne_row))
+                # break
+
+        # north_y = np.average(y_compressed)
+
+        # # Southern edge
+        # se_row = -1
+        # while True:
+            # LOG.debug("Checking edge for se_row = {}".format(se_row))
+            # x,y = m1(lons[se_row,:],lats[se_row,:])
+            # y_compressed = y.compressed()
+            # #LOG.debug("y_compressed:{}".format(y_compressed))
+            # if (len(y_compressed) == 0):
+                # LOG.debug("No Disk! ({})".format(se_row))
+                # se_row = se_row - 1
+            # else :
+                # LOG.debug("Checking complete: se_row = {}".format(se_row))
+                # break
+
+        # south_y = np.average(y_compressed)
 
 
-    plot_nav_options['llcrnrx'] = plot_nav_options['llcrnrx_map'] if options.viewport is None else options.viewport[0] * plot_nav_options['extent_x']
-    plot_nav_options['llcrnry'] = plot_nav_options['llcrnry_map'] if options.viewport is None else options.viewport[1] * plot_nav_options['extent_y']
-    plot_nav_options['urcrnrx'] = plot_nav_options['urcrnrx_map'] if options.viewport is None else options.viewport[2] * plot_nav_options['extent_x']
-    plot_nav_options['urcrnry'] = plot_nav_options['urcrnry_map'] if options.viewport is None else options.viewport[3] * plot_nav_options['extent_y']
+        # corner_x_fallback = [west_x,east_x,east_x,west_x]
+        # corner_y_fallback = [north_y,north_y,south_y,south_y]
 
-    plot_nav_options['lon_0'] = subsatellite_longitude
-    plot_nav_options['is_full_disk'] = is_full_disk
+        # LOG.debug("(west_x ,east_x ):({:10.1f},{:10.1f})".format(west_x,east_x))
+        # LOG.debug("(north_y,south_y):({:10.1f},{:10.1f})".format(north_y,south_y))
 
-    return plot_nav_options
+        # crnr_x_names = ['ulcrnrx','urcrnrx','lrcrnrx','llcrnrx']
+        # crnr_y_names = ['ulcrnry','urcrnry','lrcrnry','llcrnry']
+
+        # # Generate the center-origin coordinates from Proj object...
+        # for crnr in range(4):
+            # crnr_idx = corners[crnr]
+            # lon,lat = lons[crnr_idx], lats[crnr_idx]
+            # if ma.is_masked(lon) and ma.is_masked(lat):
+                # x,y = corner_x_fallback[crnr],corner_y_fallback[crnr]
+            # else:
+                # x,y = m1(lon, lat)
+            # plot_nav_options[crnr_x_names[crnr]] = x
+            # plot_nav_options[crnr_y_names[crnr]] = y
+            # LOG.debug(
+                    # "({}) (lon,lat):({},{}), (x,y): ({:10.1f},{:10.1f})".format(crnr,lon,lat,x,y))
+
+        # plot_nav_options['ulcrnrx_map'] = plot_nav_options['ulcrnrx'] - x_subsat
+        # plot_nav_options['ulcrnry_map'] = plot_nav_options['ulcrnry'] - y_subsat
+        # plot_nav_options['urcrnrx_map'] = plot_nav_options['urcrnrx'] - x_subsat
+        # plot_nav_options['urcrnry_map'] = plot_nav_options['urcrnry'] - y_subsat
+        # plot_nav_options['lrcrnrx_map'] = plot_nav_options['lrcrnrx'] - x_subsat
+        # plot_nav_options['lrcrnry_map'] = plot_nav_options['lrcrnry'] - y_subsat
+        # plot_nav_options['llcrnrx_map'] = plot_nav_options['llcrnrx'] - x_subsat
+        # plot_nav_options['llcrnry_map'] = plot_nav_options['llcrnry'] - y_subsat
+
+
+    # plot_nav_options['llcrnrx'] = plot_nav_options['llcrnrx_map'] if options.viewport is None else options.viewport[0] * plot_nav_options['extent_x']
+    # plot_nav_options['llcrnry'] = plot_nav_options['llcrnry_map'] if options.viewport is None else options.viewport[1] * plot_nav_options['extent_y']
+    # plot_nav_options['urcrnrx'] = plot_nav_options['urcrnrx_map'] if options.viewport is None else options.viewport[2] * plot_nav_options['extent_x']
+    # plot_nav_options['urcrnry'] = plot_nav_options['urcrnry_map'] if options.viewport is None else options.viewport[3] * plot_nav_options['extent_y']
+
+    # plot_nav_options['lon_0'] = subsatellite_longitude
+    # plot_nav_options['is_full_disk'] = is_full_disk
+
+    # return plot_nav_options
 
 
 def plotData(data,data_mask,units,pngName,stride=1,dpi=200):
@@ -716,6 +715,208 @@ def plotData(data,data_mask,units,pngName,stride=1,dpi=200):
     # Redraw the figure
     canvas.draw()
     canvas.print_figure(pngName,dpi=dpi)
+
+
+def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
+        dataset_options, plot_style_options, plot_options):
+
+    # Copy the plot options to local variables
+    #units         = plot_options['units']
+    lat_0         = plot_options['lat_0']
+    lon_0         = plot_options['lon_0']
+    #pres_0        = plot_options['pres_0']
+    latMin        = plot_options['latMin']
+    lonMin        = plot_options['lonMin']
+    latMax        = plot_options['latMax']
+    lonMax        = plot_options['lonMax']
+    proj          = plot_options['proj']
+
+    # Copy the plot options to local variables
+
+    title         = plot_style_options['title']
+    cbar_title    = plot_style_options['cbar_title']
+    stride        = plot_style_options['stride']
+    plotMin       = plot_style_options['plotMin']
+    plotMax       = plot_style_options['plotMax']
+    plotLims      = plot_style_options['plotLims']
+
+    map_axis      = plot_style_options['map_axis']
+    cbar_axis     = plot_style_options['cbar_axis']
+    image_size    = plot_style_options['image_size']
+
+    map_res       = plot_style_options['map_res']
+    cmap          = plot_style_options['cmap']
+    doScatterPlot = plot_style_options['scatterPlot']
+    plot_global   = plot_style_options['global']
+    pointSize     = plot_style_options['pointSize']
+    font_scale    = plot_style_options['font_scale']
+    log_plot      = plot_style_options['log_plot']
+    dpi           = plot_style_options['dpi']
+
+    '''
+    Plot the input dataset in mapped to particular projection
+    '''
+
+    # If our data is all missing, return
+    if (np.sum(data_mask) == data.size):
+        LOG.warn("Entire {} dataset is missing, aborting".\
+                format(cbar_title))
+        return -1
+
+    # Compute the central lat and lon if they are not specified
+    LOG.info("Initial lat_0,lon_0 : ({},{})".format(lat_0, lon_0))
+    if (lat_0 is None) or (lon_0 is None):
+        geo_shape = lat.shape
+        nrows, ncols = geo_shape[0],geo_shape[1]
+        LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
+        # Non lat/lon pair given, use the central unmasked values.
+        row_idx = int(nrows/2.)
+        col_idx = int(ncols/2.)
+
+        # Sometimes the geolocation corners are missing, which makes it difficult to determine the
+        # proper granule extent.
+        if lat_0 is None:
+            if ma.is_masked(lat[row_idx,col_idx]):
+                lat_0 = float((np.max(lat) + np.min(lat)) / 2.)
+            else:
+                lat_0 = float(lat[row_idx,col_idx])
+        if lon_0 is None:
+            if ma.is_masked(lon[row_idx,col_idx]):
+                lon_0 = float((np.max(lon) + np.min(lon)) / 2.)
+            else:
+                lon_0 = float(lon[row_idx,col_idx])
+
+        LOG.info("Incomplete lat/lon pair given, using ({},{})".format(lat_0,lon_0))
+
+    LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat),np.max(lat)))
+    LOG.info("Longitude extent of data: ({:4.2f},{:4.2f})".format(np.min(lon),np.max(lon)))
+
+    # General Setup
+    figWidth, figHeight = image_size
+    fig = ppl.figure(figsize=(figWidth,figHeight))
+
+    # Projections
+    LOG.info("Proj lat_0,lon_0 : ({},{})".format(lat_0, lon_0))
+    proj_options = {
+        'eckiv':   ccrs.EckertIV(central_longitude=lon_0, false_easting=None, false_northing=None, globe=None),
+        'sinu':    ccrs.Sinusoidal(central_longitude=lon_0, false_easting=0.0, false_northing=0.0),
+        'moll':    ccrs.Mollweide(central_longitude=lon_0, false_easting=0.0, false_northing=0.0, globe=None),
+        # 'moll':    ccrs.Mollweide(central_longitude=lon_0, globe=None),
+        'lcc':     ccrs.LambertConformal(central_longitude=lon_0, central_latitude=lat_0),
+        'ortho':   ccrs.Orthographic(central_longitude=lon_0, central_latitude=lat_0),
+        'geos':    ccrs.Geostationary(central_longitude=lon_0, satellite_height=35785831,
+            false_easting=0, false_northing=0, globe=None, sweep_axis='y'),
+        'npstere': ccrs.NorthPolarStereo(central_longitude=lon_0, true_scale_latitude=None, globe=None),
+        'spstere': ccrs.SouthPolarStereo(central_longitude=lon_0, true_scale_latitude=None, globe=None),
+        'plat':    ccrs.PlateCarree(central_longitude=lon_0, globe=None),
+    }
+
+    proj_obj = proj_options[proj]
+    ax = fig.add_axes(map_axis, projection=proj_obj)
+
+    coast_res = {'c':'110m', 'l':'50m', 'i':'10m'}[map_res]
+
+    # land_50m = cfeature.NaturalEarthFeature(category='physical',
+                                            # name='land',
+                                            # scale='110m',
+                                            # edgecolor=None,
+                                            # facecolor='0.8')
+    # ocean_50m = cfeature.NaturalEarthFeature(category='physical',
+                                            # name='ocean',
+                                            # scale='110m',
+                                            # edgecolor=None,
+                                            # facecolor='0.6')
+    # states_provinces = cfeature.NaturalEarthFeature(
+        # category='cultural',
+        # name='admin_1_states_provinces_lines',
+        # scale=coast_res,
+        # )
+
+    ax.add_feature(cfeature.LAND.with_scale(coast_res), facecolor='0.8', edgecolor=None)
+    ax.add_feature(cfeature.OCEAN.with_scale(coast_res), facecolor='0.6', edgecolor=None)
+
+    LOG.info("data.shape = {}".format(data.shape))
+    LOG.info("data_mask.shape = {}".format(data_mask.shape))
+
+    lat = ma.array(lat[::stride,::stride],mask=data_mask[::stride,::stride], fill_value=np.NaN)
+    lon = ma.array(lon[::stride,::stride],mask=data_mask[::stride,::stride], fill_value=np.NaN)
+    data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride], fill_value=np.NaN)
+
+    lat = lat.filled()
+    lon = lon.filled()
+    data = data.filled()
+
+    plotMin = np.min(data) if plotMin is None else plotMin
+    plotMax = np.max(data) if plotMax is None else plotMax
+    LOG.debug("plotMin = {}".format(plotMin))
+    LOG.debug("plotMax = {}".format(plotMax))
+
+    LOG.info("cmap = {}".format(cmap.name))
+
+    if doScatterPlot:
+        cs = ax.scatter(lon, lat, s=pointSize, c=data,
+                transform=ccrs.PlateCarree(),
+                cmap=cmap, zorder=0)
+    else:
+        cs = ax.pcolor(lon, lat, data,
+                transform=ccrs.PlateCarree(),
+                cmap=cmap, zorder=0)
+
+    ax.coastlines(resolution=coast_res, linewidth=0.5, edgecolor='0.2', zorder=0)
+    ax.add_feature(cfeature.BORDERS.with_scale(coast_res), linewidth=0.5, edgecolor='0.2',zorder=0)
+    # ax.add_feature(states_provinces.with_scale(coast_res), linewidth=0.5, edgecolor='0.2', zorder=2)
+
+    ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False)
+
+    ppl.setp(ax.get_xticklines(),visible=False)
+    ppl.setp(ax.get_yticklines(),visible=False)
+    ppl.setp(ax.get_xticklabels(), visible=False)
+    ppl.setp(ax.get_yticklabels(), visible=False)
+
+    if plot_global:
+        LOG.info(f'This is a GLOBAL plot!')
+        ax.set_global()
+    else:
+        LOG.info(f'This is a LOCAL plot!')
+
+    txt = ax.set_title(title,fontsize=11)
+
+    # cax_rect = [0.05 , 0.05, 0.90 , 0.05 ] # [left,bottom,width,height]
+    LOG.info(f'cbar_axis = {cbar_axis}')
+    # cax = fig.add_axes(cax_rect, frameon=False) # setup colorbar axes
+    cax = fig.add_axes(cbar_axis, frameon=False) # setup colorbar axes
+    cb = fig.colorbar(cs, cax=cax, orientation='horizontal')
+
+    txt = cax.set_title(cbar_title)
+
+    #
+    # Add a small globe with the swath indicated on it #
+    #
+    if not plot_global:
+        # Create main axes instance, leaving room for colorbar at bottom,
+        # and also get the Bbox of the axes instance
+        glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
+        # gproj = ccrs.Mollweide()
+        gproj = ccrs.Robinson()
+        glax = fig.add_axes(glax_rect, projection=gproj)
+
+        glax.add_feature(cfeature.LAND.with_scale('110m'), facecolor='0.8', edgecolor=None)
+        glax.add_feature(cfeature.OCEAN.with_scale('110m'), facecolor='0.6', edgecolor=None)
+
+        glcs = glax.scatter(lon[:], lat[:], s=0.01, c='r', transform=ccrs.PlateCarree(), cmap=cmap, zorder=2, alpha=0.1)
+
+        glax.set_global()
+
+    else:
+        pass
+
+
+    # Redraw the figure
+    fig.show()
+    LOG.info("Writing image file {}".format(pngName))
+    fig.savefig(pngName,dpi=dpi)
+
+    return 0
 
 
 def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
@@ -811,8 +1012,8 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
 
     if (proj=='geos' or proj=='ortho' or global_plot):
         LOG.info("Setting lat_0 and lon_0 for {} projection.".format(proj))
-        lat_0 = 0. if lat_0==None else lat_0
-        lon_0 = 0. if lon_0==None else lon_0
+        lat_0 = 0. if lat_0 is None else lat_0
+        lon_0 = 0. if lon_0 is None else lon_0
         boundinglat = None
 
     if (proj=='npstere' and bounding_lat<-30.):
@@ -847,7 +1048,7 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
 
     # Compute the central lat and lon if they are not specified
     LOG.info("Initial lat_0,lon_0 : ({},{})".format(lat_0, lon_0))
-    if (lat_0==None) or (lon_0==None):
+    if (lat_0 is None) or (lon_0 is None):
         geo_shape = lat.shape
         nrows, ncols = geo_shape[0],geo_shape[1]
         LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
@@ -857,19 +1058,19 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
 
         # Sometimes the geolocation corners are missing, which makes it difficult to determine the
         # proper granule extent.
-        if lat_0 == None:
+        if lat_0 is None:
             if ma.is_masked(lat[row_idx,col_idx]):
                 lat_0 = (np.max(lat) + np.min(lat)) / 2.
             else:
                 lat_0 = lat[row_idx,col_idx]
-        if lon_0 == None:
+        if lon_0 is None:
             if ma.is_masked(lon[row_idx,col_idx]):
                 lon_0 = (np.max(lon) + np.min(lon)) / 2.
             else:
                 lon_0 = lon[row_idx,col_idx]
 
-        # lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
-        # lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
+        # lat_0 = lat[row_idx,col_idx] if lat_0 is None else lat_0
+        # lon_0 = lon[row_idx,col_idx] if lon_0 is None else lon_0
         # LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".format(lat_0, lon_0))
         LOG.info("Incomplete lat/lon pair given, using ({},{})".format(lat_0,lon_0))
 
@@ -902,10 +1103,10 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
     # Projection dependent plotting options
     if global_plot:
         if rect_plot:
-            plot_kw['llcrnrlat'] =  -80. if latMin==None else latMin
-            plot_kw['urcrnrlat'] =   80. if latMax==None else latMax
-            plot_kw['llcrnrlon'] = -180. if lonMin==None else lonMin
-            plot_kw['urcrnrlon'] =  180. if lonMax==None else lonMax
+            plot_kw['llcrnrlat'] =  -80. if latMin is None else latMin
+            plot_kw['urcrnrlat'] =   80. if latMax is None else latMax
+            plot_kw['llcrnrlon'] = -180. if lonMin is None else lonMin
+            plot_kw['urcrnrlon'] =  180. if lonMax is None else lonMax
         else:
             pass
     else:
@@ -927,11 +1128,12 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
     # Create the Basemap plotting object
     LOG.info("Plotting for {} projection...".format(proj))
     try:
-        m = Basemap(**plot_kw)
-    except ValueError, err :
+        pass
+        # m = Basemap(**plot_kw)
+    except ValueError as err :
             LOG.error("{} ({} projection), aborting.".format(err,proj))
             return 1
-    except RuntimeError, err :
+    except RuntimeError as err :
             LOG.error("{} ({} projection), aborting.".format(err,proj))
             return 1
 
@@ -950,8 +1152,8 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
 
     data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
 
-    plotMin = np.min(data) if plotMin==None else plotMin
-    plotMax = np.max(data) if plotMax==None else plotMax
+    plotMin = np.min(data) if plotMin is None else plotMin
+    plotMax = np.max(data) if plotMax is None else plotMax
     LOG.debug("plotMin = {}".format(plotMin))
     LOG.debug("plotMax = {}".format(plotMax))
 
@@ -978,30 +1180,30 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
     #
     # Add a small globe with the swath indicated on it #
     #
-    if not global_plot:
-        # Create main axes instance, leaving room for colorbar at bottom,
-        # and also get the Bbox of the axes instance
-        glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
-        glax = fig.add_axes(glax_rect)
+    # if not global_plot:
+        # # Create main axes instance, leaving room for colorbar at bottom,
+        # # and also get the Bbox of the axes instance
+        # glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
+        # glax = fig.add_axes(glax_rect)
 
-        m_globe = Basemap(lat_0=0.,lon_0=0.,\
-            ax=glax,resolution='c',area_thresh=10000.,projection='robin')
+        # m_globe = Basemap(lat_0=0.,lon_0=0.,\
+            # ax=glax,resolution='c',area_thresh=10000.,projection='robin')
 
-        # If we previously had a zero size data array, increase the pointSize
-        # so the data points are visible on the global plot
-        if (np.shape(lon[::stride,::stride])[0]==2) :
-            pointSize = 5.
+        # # If we previously had a zero size data array, increase the pointSize
+        # # so the data points are visible on the global plot
+        # if (np.shape(lon[::stride,::stride])[0]==2) :
+            # pointSize = 5.
 
-        x,y=m_globe(lon[::stride,::stride],lat[::stride,::stride])
-        swath = np.zeros(np.shape(x),dtype=int)
+        # x,y=m_globe(lon[::stride,::stride],lat[::stride,::stride])
+        # swath = np.zeros(np.shape(x),dtype=int)
 
         #m_globe.drawmapboundary(linewidth=0.1)
         #m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
         #m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
 
         #p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
-    else:
-        pass
+    # else:
+        # pass
 
 
     # Redraw the figure
@@ -1105,8 +1307,8 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
 
     if (proj=='geos' or proj=='ortho' or global_plot):
         LOG.info("Setting lat_0 and lon_0 for {} projection.".format(proj))
-        lat_0 = 0. if lat_0==None else lat_0
-        lon_0 = 0. if lon_0==None else lon_0
+        lat_0 = 0. if lat_0 is None else lat_0
+        lon_0 = 0. if lon_0 is None else lon_0
         boundinglat = None
 
     if (proj=='npstere' and bounding_lat<-30.):
@@ -1140,7 +1342,7 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
         bounding_lat = -1.
 
     # Compute the central lat and lon if they are not specified
-    if (lat_0==None) or (lon_0==None):
+    if (lat_0 is None) or (lon_0 is None):
         geo_shape = lat.shape
         nrows, ncols = geo_shape[0],geo_shape[1]
         LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
@@ -1150,19 +1352,19 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
 
         # Sometimes the geolocation corners are missing, which makes it difficult to determine the
         # proper granule extent.
-        if lat_0 == None:
+        if lat_0 is None:
             if ma.is_masked(lat[row_idx,col_idx]):
                 lat_0 = (np.max(lat) + np.min(lat)) / 2.
             else:
                 lat_0 = lat[row_idx,col_idx]
-        if lon_0 == None:
+        if lon_0 is None:
             if ma.is_masked(lon[row_idx,col_idx]):
                 lon_0 = (np.max(lon) + np.min(lon)) / 2.
             else:
                 lon_0 = lon[row_idx,col_idx]
 
-        #lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
-        #lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
+        #lat_0 = lat[row_idx,col_idx] if lat_0 is None else lat_0
+        #lon_0 = lon[row_idx,col_idx] if lon_0 is None else lon_0
         LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".format(lat_0,lon_0))
 
     LOG.info("Latitude extent of data:  ({:4.2f},{:4.2f})".format(np.min(lat),np.max(lat)))
@@ -1208,10 +1410,10 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
     # Projection dependent plotting options
     if global_plot:
         if rect_plot:
-            plot_kw['llcrnrlat'] =  -80. if latMin==None else latMin
-            plot_kw['urcrnrlat'] =   80. if latMax==None else latMax
-            plot_kw['llcrnrlon'] = -180. if lonMin==None else lonMin
-            plot_kw['urcrnrlon'] =  180. if lonMax==None else lonMax
+            plot_kw['llcrnrlat'] =  -80. if latMin is None else latMin
+            plot_kw['urcrnrlat'] =   80. if latMax is None else latMax
+            plot_kw['llcrnrlon'] = -180. if lonMin is None else lonMin
+            plot_kw['urcrnrlon'] =  180. if lonMax is None else lonMax
         else:
             pass
     else:
@@ -1233,11 +1435,12 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
     # Create the Basemap plotting object
     LOG.info("Plotting for {} projection...".format(proj))
     try:
-        m = Basemap(**plot_kw)
-    except ValueError, err :
+        # m = Basemap(**plot_kw)
+        pass
+    except ValueError as err :
             LOG.error("{} ({} projection), aborting.".format(err,proj))
             return 1
-    except RuntimeError, err :
+    except RuntimeError as err :
             LOG.error("{} ({} projection), aborting.".format(err,proj))
             return 1
 
@@ -1253,8 +1456,8 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
 
     data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
 
-    plotMin = np.min(data) if plotMin==None else plotMin
-    plotMax = np.max(data) if plotMax==None else plotMax
+    plotMin = np.min(data) if plotMin is None else plotMin
+    plotMax = np.max(data) if plotMax is None else plotMax
     LOG.debug("plotMin = {}".format(plotMin))
     LOG.debug("plotMax = {}".format(plotMax))
 
@@ -1293,30 +1496,30 @@ def plotMapDataDiscrete(lat, lon, data, data_mask, pngName,
     #
     # Add a small globe with the swath indicated on it #
     #
-    if not global_plot:
-        # Create main axes instance, leaving room for colorbar at bottom,
-        # and also get the Bbox of the axes instance
-        glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
-        glax = fig.add_axes(glax_rect)
+    # if not global_plot:
+        # # Create main axes instance, leaving room for colorbar at bottom,
+        # # and also get the Bbox of the axes instance
+        # glax_rect = [0.81, 0.75, 0.18, 0.20 ] # [left,bottom,width,height]
+        # glax = fig.add_axes(glax_rect)
 
-        m_globe = Basemap(lat_0=0.,lon_0=0.,\
-            ax=glax,resolution='c',area_thresh=10000.,projection='robin')
+        # m_globe = Basemap(lat_0=0.,lon_0=0.,\
+            # ax=glax,resolution='c',area_thresh=10000.,projection='robin')
 
-        # If we previously had a zero size data array, increase the pointSize
-        # so the data points are visible on the global plot
-        if (np.shape(lon[::stride,::stride])[0]==2) :
-            pointSize = 5.
+        # # If we previously had a zero size data array, increase the pointSize
+        # # so the data points are visible on the global plot
+        # if (np.shape(lon[::stride,::stride])[0]==2) :
+            # pointSize = 5.
 
-        x,y=m_globe(lon[::stride,::stride],lat[::stride,::stride])
-        swath = np.zeros(np.shape(x),dtype=int)
+        # x,y=m_globe(lon[::stride,::stride],lat[::stride,::stride])
+        # swath = np.zeros(np.shape(x),dtype=int)
 
-        m_globe.drawmapboundary(linewidth=0.1)
-        m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
-        m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
+        # m_globe.drawmapboundary(linewidth=0.1)
+        # m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
+        # m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
 
-        p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
-    else:
-        pass
+        # p_globe = m_globe.scatter(x,y,s=0.5,c="red",axes=glax,edgecolors='none',zorder=2)
+    # else:
+        # pass
 
 
     # Redraw the figure
@@ -1404,7 +1607,7 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
     LOG.info("pressure_slice.shape = {}".format(pressure_slice.shape))
 
     LOG.info("elevation = {}".format(elevation))
-    LOG.info("elevation.shape = {}".format(elevation.shape if elevation != None else None))
+    LOG.info("elevation.shape = {}".format(elevation.shape if elevation is not None else None))
 
     # If our data is all missing, return
     #data_mask = data.mask
@@ -1424,8 +1627,8 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
 
     data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
 
-    plotMin = np.min(data) if plotMin==None else plotMin
-    plotMax = np.max(data) if plotMax==None else plotMax
+    plotMin = np.min(data) if plotMin is None else plotMin
+    plotMax = np.max(data) if plotMax is None else plotMax
     LOG.debug("plotMin = {}".format(plotMin))
     LOG.debug("plotMax = {}".format(plotMax))
 
@@ -1444,10 +1647,10 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
 
     LOG.info("zMin,zMax = {},{}".format(np.min(z),np.max(z)))
 
-    if elevation != None:
+    if elevation is not None:
 
-        yMin = 0. if yMin == None else yMin
-        yMax = 50000. if yMax == None else yMax
+        yMin = 0. if yMin is None else yMin
+        yMax = 50000. if yMax is None else yMax
         LOG.info("yMin,yMax = {},{}".format(yMin,yMax))
 
         y = elevation.real.ravel()
@@ -1486,8 +1689,8 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
 
     else:
 
-        yMin = np.max(pressure_slice) if yMin == None else yMin
-        yMax = 0. if yMax == None else yMax
+        yMin = np.max(pressure_slice) if yMin is None else yMin
+        yMax = 0. if yMax is None else yMax
         LOG.info("yMin,yMax = {},{}".format(yMin,yMax))
 
         y = pressure_slice.ravel()
@@ -1568,15 +1771,15 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
     globe_proj = 'lcc'
 
     # Compute the central lat and lon if they are not specified
-    if (lat_0==None) or (lon_0==None):
+    if (lat_0 is None) or (lon_0 is None):
         geo_shape = lat_arr.shape
         nrows, ncols = geo_shape[0],geo_shape[1]
         LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
         # Non lat/lon pair given, use the central unmasked values.
         row_idx = int(nrows/2.)
         col_idx = int(ncols/2.)
-        lat_0 = lat_arr[row_idx,col_idx] if lat_0==None else lat_0
-        lon_0 = lon_arr[row_idx,col_idx] if lon_0==None else lon_0
+        lat_0 = lat_arr[row_idx,col_idx] if lat_0 is None else lat_0
+        lon_0 = lon_arr[row_idx,col_idx] if lon_0 is None else lon_0
         LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
                 format(lat_0,lon_0))
 
@@ -1613,11 +1816,12 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
     # Create the Basemap plotting object
     LOG.info("Plotting for {} projection...".format(proj))
     try:
-        m_globe = Basemap(**plot_kw)
-    except ValueError, err :
+        # m_globe = Basemap(**plot_kw)
+        pass
+    except ValueError as err :
             LOG.error("{} ({} projection), aborting.".format(err,proj))
             return 1
-    except RuntimeError, err :
+    except RuntimeError as err :
             LOG.error("{} ({} projection), aborting.".format(err,proj))
             return 1
 
@@ -1626,9 +1830,10 @@ def plotSliceContinuous(lat, lon, lat_arr, lon_arr, pressure, elevation, data, d
     if (np.shape(lon[::stride])[0]==2) :
         pointSize = 5.
 
-    m_globe.drawmapboundary(linewidth=0.1)
-    m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
-    m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
+    # m_globe.drawmapboundary(linewidth=0.1)
+    # m_globe.fillcontinents(ax=glax,color='gray',zorder=1)
+    # m_globe.fillcontinents(ax=glax,zorder=1)
+    # m_globe.drawcoastlines(ax=glax,linewidth=0.1,zorder=3)
 
     #swath = np.zeros(np.shape(x),dtype=int)
 
@@ -1726,7 +1931,7 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     LOG.info("pressure_slice.shape = {}".format(pressure_slice.shape))
 
     LOG.info("elevation = {}".format(elevation))
-    LOG.info("elevation.shape = {}".format(elevation.shape if elevation != None else None))
+    LOG.info("elevation.shape = {}".format(elevation.shape if elevation is not None else None))
 
     # If our data is all missing, return
     #data_mask = data.mask
@@ -1762,8 +1967,8 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
 
     data = ma.array(data[::stride,::stride],mask=data_mask[::stride,::stride])
 
-    plotMin = np.min(data) if plotMin==None else plotMin
-    plotMax = np.max(data) if plotMax==None else plotMax
+    plotMin = np.min(data) if plotMin is None else plotMin
+    plotMax = np.max(data) if plotMax is None else plotMax
     LOG.debug("plotMin = {}".format(plotMin))
     LOG.debug("plotMax = {}".format(plotMax))
 
@@ -1782,10 +1987,10 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
 
     LOG.info("zMin,zMax = {},{}".format(np.min(z),np.max(z)))
 
-    if elevation != None:
+    if elevation is not None:
 
-        yMin = 0. if yMin == None else yMin
-        yMax = 50000. if yMax == None else yMax
+        yMin = 0. if yMin is None else yMin
+        yMax = 50000. if yMax is None else yMax
         LOG.info("yMin,yMax = {},{}".format(yMin,yMax))
 
         y = elevation.ravel()
@@ -1824,8 +2029,8 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
 
     else:
 
-        yMin = np.max(pressure_slice) if yMin == None else yMin
-        yMax = 0. if yMax == None else yMax
+        yMin = np.max(pressure_slice) if yMin is None else yMin
+        yMax = 0. if yMax is None else yMax
         LOG.info("yMin,yMax = {},{}".format(yMin,yMax))
 
         z = ma.array(data.ravel(),mask=data_mask.ravel())
@@ -1905,15 +2110,15 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     globe_proj = 'lcc'
 
     # Compute the central lat and lon if they are not specified
-    if (lat_0==None) or (lon_0==None):
+    if (lat_0 is None) or (lon_0 is None):
         geo_shape = lat_arr.shape
         nrows, ncols = geo_shape[0],geo_shape[1]
         LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
         # Non lat/lon pair given, use the central unmasked values.
         row_idx = int(nrows/2.)
         col_idx = int(ncols/2.)
-        lat_0 = lat_arr[row_idx,col_idx] if lat_0==None else lat_0
-        lon_0 = lon_arr[row_idx,col_idx] if lon_0==None else lon_0
+        lat_0 = lat_arr[row_idx,col_idx] if lat_0 is None else lat_0
+        lon_0 = lon_arr[row_idx,col_idx] if lon_0 is None else lon_0
         LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
                 format(lat_0,lon_0))
 
@@ -1947,11 +2152,12 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     # Create the Basemap plotting object
     LOG.info("Plotting for {} projection...".format(proj))
     try:
-        m_globe = Basemap(**plot_kw)
-    except ValueError, err :
+        # m_globe = Basemap(**plot_kw)
+        pass
+    except ValueError as err :
             LOG.error("{} ({} projection), aborting.".format(err,proj))
             return 1
-    except RuntimeError, err :
+    except RuntimeError as err :
             LOG.error("{} ({} projection), aborting.".format(err,proj))
             return 1
 
@@ -1992,28 +2198,29 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
 
     plot_style_options = {}
     plot_style_options['stride'] = options.stride
-    plot_style_options['plotMin'] = dataset_options['values'][0] if options.plotMin==None else options.plotMin
-    plot_style_options['plotMax'] = dataset_options['values'][-1] if options.plotMax==None else options.plotMax
+    plot_style_options['plotMin'] = dataset_options['values'][0] if options.plotMin is None else options.plotMin
+    plot_style_options['plotMax'] = dataset_options['values'][-1] if options.plotMax is None else options.plotMax
     plot_style_options['map_res'] = options.map_res
     plot_style_options['map_axis'] = options.map_axis
     plot_style_options['cbar_axis'] = options.cbar_axis
     plot_style_options['image_size'] = options.image_size
     plot_style_options['scatterPlot'] = options.doScatterPlot
+    plot_style_options['global'] = options.plot_global
     plot_style_options['pointSize'] = options.pointSize
     plot_style_options['font_scale'] = options.font_scale
     plot_style_options['proj'] = options.proj
     plot_style_options['dpi'] = options.dpi
 
-    filenames = dfile_obj.datasets['file_attrs'].keys()
+    filenames = list(dfile_obj.datasets['file_attrs'])
     filenames.sort()
     dt_image_date = dfile_obj.datasets['file_attrs'][filenames[0]]['dt_obj']
 
     # Set the plot title
-    if options.plot_title==None:
+    if options.plot_title is None:
         if options.plot_type == 'image':
-            if options.pressure != None:
+            if options.pressure  is not None:
                 vert_lev_str = "" if not dataset_options['level'] else " @ {:4.2f} hPa".format(dfile_obj.pres_0)
-            elif options.elevation != None:
+            elif options.elevation is not None:
                 vert_lev_str = "" if not dataset_options['level'] else " @ {:4.2f} feet".format(dfile_obj.elev_0)
             else:
                 pass
@@ -2038,15 +2245,15 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
     else:
         plot_style_options['units'] = dataset_options['units']
 
-    if options.cbar_title==None:
-        quantity = '' if dataset_options['quantity']==None else dataset_options['quantity']
-        units = '' if dataset_options['units']==None else '[{}]'.format(dataset_options['units'])
+    if options.cbar_title is None:
+        quantity = '' if dataset_options['quantity'] is None else dataset_options['quantity']
+        units = '' if dataset_options['units'] is None else '[{}]'.format(dataset_options['units'])
         plot_style_options['cbar_title'] = "{} {}".format(quantity,units)
     else:
         plot_style_options['cbar_title'] = options.cbar_title
 
     # Set the colormap
-    if options.cmap == None:
+    if options.cmap is None:
         plot_style_options['cmap'] = dataset_options['cmap']
     else :
         try:
@@ -2101,7 +2308,8 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
     #else:
         #pass
 
-    plot_style_options['plot_map'] = plotMapDataDiscrete if dataset_options['discrete'] else plotMapDataContinuous
+    # plot_style_options['plot_map'] = plotMapDataDiscrete if dataset_options['discrete'] else plotMapDataContinuous
+    plot_style_options['plot_map'] = plotMapDataDiscrete if dataset_options['discrete'] else plotMapDataContinuous_cartopy
     plot_style_options['plot_image'] = plot_image_discrete if dataset_options['discrete'] else plot_image_continuous
     plot_style_options['plot_slice'] = plotSliceDiscrete if dataset_options['discrete'] else plotSliceContinuous
 
@@ -2141,7 +2349,7 @@ def plot_image_continuous(data,data_mask,png_file,
     # Construct particular data mask
     particular_mask = np.zeros(data.shape,dtype=np.bool)
     for ranges in dataset_options['mask_ranges']:
-        print "Mask range is {}".format(ranges)
+        print("Mask range is {}".format(ranges))
         particular_mask += ma.masked_inside(data,ranges[0],ranges[1]).mask
 
     LOG.debug("data array has shape {}".format(data.shape))
@@ -2290,8 +2498,8 @@ def plot_map_continuous(lat,lon,data,png_file,
 
     if (proj=='geos' or proj=='ortho' or global_plot):
         LOG.info("Setting lat_0 and lon_0 for {} projection.".format(proj))
-        lat_0 = 0. if lat_0==None else lat_0
-        lon_0 = 0. if lon_0==None else lon_0
+        lat_0 = 0. if lat_0 is None else lat_0
+        lon_0 = 0. if lon_0 is None else lon_0
         boundinglat = None
 
     if (proj=='npstere' and bounding_lat<-30.):
@@ -2325,15 +2533,15 @@ def plot_map_continuous(lat,lon,data,png_file,
         bounding_lat = -1.
 
     # Compute the central lat and lon if they are not specified
-    if (lat_0==None) or (lon_0==None):
+    if (lat_0 is None) or (lon_0 is None):
         geo_shape = lat.shape
         nrows, ncols = geo_shape[0],geo_shape[1]
         LOG.debug("nrows,ncols= ({},{})".format(nrows,ncols))
         # Non lat/lon pair given, use the central unmasked values.
         row_idx = int(nrows/2.)
         col_idx = int(ncols/2.)
-        lat_0 = lat[row_idx,col_idx] if lat_0==None else lat_0
-        lon_0 = lon[row_idx,col_idx] if lon_0==None else lon_0
+        lat_0 = lat[row_idx,col_idx] if lat_0 is None else lat_0
+        lon_0 = lon[row_idx,col_idx] if lon_0 is None else lon_0
         LOG.info("Incomplete lat/lon pair given, using ({:4.2f},{:4.2f})".
                 format(lat_0,lon_0))
 
@@ -2344,7 +2552,7 @@ def plot_map_continuous(lat,lon,data,png_file,
     # Construct particular data mask
     particular_mask = np.zeros(data.shape,dtype=np.bool)
     for ranges in dataset_options['mask_ranges']:
-        print "Mask range is {}".format(ranges)
+        print("Mask range is {}".format(ranges))
         particular_mask += ma.masked_inside(data,ranges[0],ranges[1]).mask
 
     LOG.debug("data array has shape {}".format(data.shape))
@@ -2378,10 +2586,10 @@ def plot_map_continuous(lat,lon,data,png_file,
     # Projection dependent plotting options
     if global_plot:
         if rect_plot:
-            plot_kw['llcrnrlat'] =  -80. if latMin==None else latMin
-            plot_kw['urcrnrlat'] =   80. if latMax==None else latMax
-            plot_kw['llcrnrlon'] = -180. if lonMin==None else lonMin
-            plot_kw['urcrnrlon'] =  180. if lonMax==None else lonMax
+            plot_kw['llcrnrlat'] =  -80. if latMin is None else latMin
+            plot_kw['urcrnrlat'] =   80. if latMax is None else latMax
+            plot_kw['llcrnrlon'] = -180. if lonMin is None else lonMin
+            plot_kw['urcrnrlon'] =  180. if lonMax is None else lonMax
         else:
             pass
     else:
@@ -2403,11 +2611,12 @@ def plot_map_continuous(lat,lon,data,png_file,
     # Create the Basemap plotting object
     LOG.info("Plotting for {} projection...".format(proj))
     try:
-        m = Basemap(**plot_kw)
-    except ValueError, err :
+        # m = Basemap(**plot_kw)
+        pass
+    except ValueError as err :
             LOG.error("{} ({} projection), aborting.".format(err,proj))
             return 1
-    except RuntimeError, err :
+    except RuntimeError as err :
             LOG.error("{} ({} projection), aborting.".format(err,proj))
             return 1
 
@@ -2517,7 +2726,7 @@ def plot_image_discrete(data,data_mask,png_file,
     # Construct particular data mask
     particular_mask = np.zeros(data.shape,dtype=np.bool)
     for vals in dataset_options['mask_values']:
-        print "Mask value is {}".format(vals)
+        print("Mask value is {}".format(vals))
         particular_mask += ma.masked_equal(data,vals).mask
 
     LOG.debug("data array has shape {}".format(data.shape))
@@ -2644,7 +2853,7 @@ def plot_map_discrete(lat,lon,data,data_mask,png_file,
     # Construct particular data mask
     particular_mask = np.zeros(data.shape,dtype=np.bool)
     for vals in dataset_options['mask_values']:
-        print "Mask value is {}".format(vals)
+        print("Mask value is {}".format(vals))
         particular_mask += ma.masked_equal(data,vals).mask
 
     LOG.debug("data array has shape {}".format(data.shape))
@@ -2678,12 +2887,13 @@ def plot_map_discrete(lat,lon,data,data_mask,png_file,
     tickPos = tickPos[0 :-1] + tickPos[1]/2.
 
     # Setup the map
-    m = Basemap(projection='geos',lon_0=lon_0,ax=ax,fix_aspect=True,resolution=map_res,
-            llcrnrx=llcrnrx,
-            llcrnry=llcrnry,
-            urcrnrx=urcrnrx,
-            urcrnry=urcrnry
-            )
+    m=1
+    # m = Basemap(projection='geos',lon_0=lon_0,ax=ax,fix_aspect=True,resolution=map_res,
+            # llcrnrx=llcrnrx,
+            # llcrnry=llcrnry,
+            # urcrnrx=urcrnrx,
+            # urcrnry=urcrnry
+            # )
 
     x,y=m(lon[::stride,::stride],lat[::stride,::stride])
 

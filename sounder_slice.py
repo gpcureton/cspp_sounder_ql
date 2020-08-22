@@ -33,32 +33,13 @@ where...
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2014-05-10.
 Copyright (c) 2014 University of Wisconsin Regents. All rights reserved.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+Licensed under GNU GPLv3.
 """
 
-file_Date = '$Date: 2015-02-11 22:59:24 -0800 (Wed, 11 Feb 2015) $'
-file_Revision = '$Revision: 2354 $'
-file_Author = '$Author: geoffc $'
-file_HeadURL = '$HeadURL: https://svn.ssec.wisc.edu/repos/jpss_adl/trunk/scripts/iapp/quicklooks/sounder_skewt.py $'
-file_Id = '$Id: sounder_skewt.py 2354 2015-02-12 06:59:24Z geoffc $'
-
-__author__ = 'Geoff Cureton <geoff.cureton@ssec.wisc.edu>'
-__version__ = '$Id: sounder_skewt.py 2354 2015-02-12 06:59:24Z geoffc $'
-__docformat__ = 'Epytext'
-
-import os, sys, logging, traceback
+import os
+import sys
+import logging
+import traceback
 from os import path,uname,environ
 import string
 import re
@@ -79,13 +60,13 @@ import matplotlib.cm as cm
 from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
 
-matplotlib.use('Agg')
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+# matplotlib.use('Agg')
+# from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 # This must come *after* the backend is specified.
 import matplotlib.pyplot as ppl
 
-from mpl_toolkits.basemap import Basemap
+# from mpl_toolkits.basemap import Basemap
 
 import scipy.spatial as ss
 
@@ -209,7 +190,7 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
         LOG.debug("Retrieved latitude is {:4.2f}".format(lat[row,col].squeeze()))
         LOG.debug("Retrieved longitude is {:4.2f}".format(lon[row,col].squeeze()))
 
-    except Exception, err :
+    except Exception as err :
         LOG.warn("{}".format(err))
         LOG.debug(traceback.format_exc())
 
@@ -327,7 +308,7 @@ def iapp_sounder(iapp_file_list,lat_0=None,lon_0=None):
         LOG.info("Closing {}".format(iapp_file))
         fileObj.close()
 
-    except Exception, err :
+    except Exception as err :
         LOG.warn("There was a problem, closing {}".format(iapp_file))
         LOG.warn("{}".format(err))
         LOG.debug(traceback.format_exc())
@@ -476,7 +457,7 @@ def mirs_sounder(mirs_file_list,lat_0=None,lon_0=None):
         LOG.info("Closing {}".format(mirs_file))
         fileObj.close()
 
-    except Exception, err :
+    except Exception as err :
         LOG.warn("There was a problem, closing {}".format(mirs_file))
         LOG.warn("{}".format(err))
         LOG.debug(traceback.format_exc())
@@ -623,7 +604,7 @@ def hsrtv_sounder(hsrtv_file_list,lat_0=None,lon_0=None):
         LOG.info("Closing {}".format(hsrtv_file))
         fileObj.close()
 
-    except Exception, err :
+    except Exception as err :
         LOG.warn("There was a problem, closing {}".format(hsrtv_file))
         LOG.warn("{}".format(err))
         LOG.debug(traceback.format_exc())
@@ -786,7 +767,7 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
         LOG.info("Closing {}".format(nucaps_file))
         fileObj.close()
 
-    except Exception, err :
+    except Exception as err :
         LOG.warn("There was a problem, closing {}".format(nucaps_file))
         LOG.warn("{}".format(err))
         LOG.debug(traceback.format_exc())

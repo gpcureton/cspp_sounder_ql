@@ -32,20 +32,8 @@ where...
 
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2014-05-10.
-Copyright (c) 2014 University of Wisconsin Regents. All rights reserved.
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+Copyright (c) 2018 University of Wisconsin Regents.
+Licensed under GNU GPLv3.
 """
 
 import os
@@ -79,16 +67,21 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 # This must come *after* the backend is specified.
 import matplotlib.pyplot as ppl
 
-from mpl_toolkits.basemap import Basemap
-
 import scipy.spatial as ss
 
 from netCDF4 import Dataset
 from netCDF4 import num2date
 import h5py
 
-import skewt as skT
+import metpy
+from metpy.plots import SkewT
+# from metpy.units import units
+# import metpy.calc as mpcalc
+
+# import skewt as skT
 from thermo import dewhum
+
+# import sounder_packages
 
 # every module should have a LOG object
 LOG = logging.getLogger(__file__)
@@ -184,18 +177,17 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
                 format(lat_0,lon_0))
 
         # Construct the kdtree
-        points = zip(lon_masked, lat_masked)
-        tree = ss.KDTree(points)
+        tree = ss.KDTree(list(zip(lon.ravel(), lat.ravel())))
 
         # get index of each point which distance from (lon_0,lat_0) is under 1
-        a = tree.query_ball_point([lon_0, lat_0], 1.0)
-        if a == []:
+        dist, dist_idx = tree.query([lon_0, lat_0], distance_upper_bound=1.)
+        if dist == np.inf:
             LOG.error("Specified coordinates ({:4.2f},{:4.2f}) not found...".\
-                    format(lat_0,lon_0))
+                    format(lat_0, lon_0))
             return None,None
 
-        row = [rows_masked[i] for i in a][0]
-        col = [cols_masked[i] for i in a][0]
+        row = rows_masked[dist_idx]
+        col = cols_masked[dist_idx]
 
         LOG.debug("Row index is {}".format(row))
         LOG.debug("Col index is {}".format(col))
@@ -203,8 +195,8 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
         LOG.debug("Retrieved latitude is {:4.2f}".format(lat[row,col].squeeze()))
         LOG.debug("Retrieved longitude is {:4.2f}".format(lon[row,col].squeeze()))
 
-    except Exception, err :
-        LOG.warn("{}".format(err))
+    except Exception as err :
+        LOG.warning("{}".format(err))
         LOG.debug(traceback.format_exc())
 
     return row,col
@@ -321,9 +313,9 @@ def iapp_sounder(iapp_file_list,lat_0=None,lon_0=None):
         LOG.info("Closing {}".format(iapp_file))
         fileObj.close()
 
-    except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(iapp_file))
-        LOG.warn("{}".format(err))
+    except Exception as err :
+        LOG.warning("There was a problem, closing {}".format(iapp_file))
+        LOG.warning("{}".format(err))
         LOG.debug(traceback.format_exc())
         fileObj.close()
         LOG.info("Exiting...")
@@ -470,9 +462,9 @@ def mirs_sounder(mirs_file_list,lat_0=None,lon_0=None):
         LOG.info("Closing {}".format(mirs_file))
         fileObj.close()
 
-    except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(mirs_file))
-        LOG.warn("{}".format(err))
+    except Exception as err :
+        LOG.warning("There was a problem, closing {}".format(mirs_file))
+        LOG.warning("{}".format(err))
         LOG.debug(traceback.format_exc())
         fileObj.close()
         LOG.info("Exiting...")
@@ -617,9 +609,9 @@ def hsrtv_sounder(hsrtv_file_list,lat_0=None,lon_0=None):
         LOG.info("Closing {}".format(hsrtv_file))
         fileObj.close()
 
-    except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(hsrtv_file))
-        LOG.warn("{}".format(err))
+    except Exception as err :
+        LOG.warning("There was a problem, closing {}".format(hsrtv_file))
+        LOG.warning("{}".format(err))
         LOG.debug(traceback.format_exc())
         fileObj.close()
         LOG.info("Exiting...")
@@ -727,13 +719,35 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
 
     LOG.debug("Input file list: {}".format(nucaps_file_list))
 
-    first_granule = True
+    nucaps_file = nucaps_file_list[0]
 
     # Open the file object
-    nucaps_file = nucaps_file_list[0]
     fileObj = Dataset(nucaps_file)
 
     try:
+
+        # Dimension names
+        dimension_name = {}
+        dimension_name['nfor'] = ['Number_of_CrIS_FORs', 'Number_of_Dice']
+        dimension_name['nlevels'] = ['Number_of_P_Levels']
+
+        dimensions = {}
+        for key in dimension_name:
+            for key_var in dimension_name[key]:
+                try:
+                    dimensions[key] = fileObj.dimensions[key_var].size
+                    break
+                except:
+                    pass
+            LOG.debug("dimension {} = {}".format(key,dimensions[key]))
+
+        dimensions['ncols'] = 30
+        dimensions['nrows'] = dimensions['nfor'] // dimensions['ncols']
+        LOG.debug("dimensions = {}".format(dimensions))
+
+        nrows = dimensions['nrows']
+        ncols = dimensions['ncols']
+        nlevels = dimensions['nlevels']
 
         sounding_inputs['pres']['node'] = fileObj.variables['Pressure']
         sounding_inputs['temp']['node'] = fileObj.variables['Temperature']
@@ -741,8 +755,14 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
         sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
         sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
 
-        lat = sounding_inputs['lat']['node'][:].reshape(4,30)
-        lon = sounding_inputs['lon']['node'][:].reshape(4,30)
+        # FIXME: Latitude not being read in correctly for IASI files
+        lat = sounding_inputs['lat']['node'][:].reshape(nrows, ncols)
+        lon = sounding_inputs['lon']['node'][:].reshape(nrows, ncols)
+
+        LOG.info(f"Latitude.shape = {lat[:20].shape}")
+        LOG.info(f"Longitude.shape = {lon[:20].shape}")
+        LOG.info(f"Latitude = {lat[:20]}")
+        LOG.info(f"Longitude = {lon[:20]}")
 
         # Fill in some missing attributes
         sounding_inputs['pres']['units'] = 'hPa'
@@ -751,8 +771,7 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
 
         for label in data_labels:
             if sounding_inputs[label] != None:
-                LOG.info(">>> Processing {} ...".\
-                        format(sounding_inputs[label]['dset_name']))
+                LOG.info(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
                 for attr_name in sounding_inputs[label]['node'].ncattrs():
                     attr = getattr(sounding_inputs[label]['node'],attr_name)
                     LOG.debug("{} = {}".format(attr_name,attr))
@@ -770,9 +789,9 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
 
         sounding_inputs['pres']['data'] = sounding_inputs['pres']['node'][0,:]
 
-        temp = sounding_inputs['temp']['node'][:,:].reshape(4,30,100)
+        temp = sounding_inputs['temp']['node'][:,:].reshape(nrows, ncols, nlevels)
         # Convert water vapor from g/g to g/kg
-        wvap = 1000.*sounding_inputs['wvap']['node'][:,:].reshape(4,30,100)
+        wvap = 1000.*sounding_inputs['wvap']['node'][:,:].reshape(nrows, ncols, nlevels)
 
         sounding_inputs['temp']['data'] = temp[row,col,:]
         sounding_inputs['wvap']['data'] = wvap[row,col,:]
@@ -780,9 +799,9 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
         LOG.info("Closing {}".format(nucaps_file))
         fileObj.close()
 
-    except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(nucaps_file))
-        LOG.warn("{}".format(err))
+    except Exception as err :
+        LOG.warning("There was a problem, closing {}".format(nucaps_file))
+        LOG.warning("{}".format(err))
         LOG.debug(traceback.format_exc())
         fileObj.close()
         LOG.info("Exiting...")
@@ -839,6 +858,7 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
 
 def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options):
 
+    print(f"Metpy version = {metpy.__version__}")
 
     # Determine the row and column from the input lat and lon and the
     # supplied geolocation
@@ -856,17 +876,42 @@ def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options)
     td = dewpoint
     fig = optional matplotlib figure
     '''
-    fig,ax,canvas = skT.plot_skewt_OO(p, rh, t, td, **plot_options)
+    fig = ppl.figure(figsize=(15, 15))
+    skew = SkewT(fig, rotation=45)
 
-    ax.set_xlabel(plot_options['taxis_label'],fontsize=10)
-    ax.set_ylabel(plot_options['paxis_label'],fontsize=10)
-    ax.set_title(plot_options['title'],fontsize=10)
+    # Plot the data using normal plotting functions, in this case using
+    # log scaling in Y, as dictated by the typical meteorological plot
+    skew.plot(p, t, 'r', label=plot_options['T_legend'])
+    skew.plot(p, td, 'g', label=plot_options['Td_legend'])
+    skew.ax.set_ylim(1000, 100)
+    skew.ax.set_xlim(-40., 45.)
+    skew.ax.legend(fontsize=10)
+
+    # An example of a slanted line at constant T -- in this case the 0
+    # isotherm
+    skew.ax.axvline(0, color='c', linestyle='-', linewidth=1)
+
+    skew.ax.set_xlabel(plot_options['taxis_label'],fontsize=12)
+    skew.ax.set_ylabel(plot_options['paxis_label'],fontsize=12)
+    skew.ax.set_title(plot_options['title'],fontsize=12)
+
+    # Add the relevant special lines
+    #skew.plot_dry_adiabats(color='brown', linestyle='-', linewidth=0.8)
+    #skew.plot_moist_adiabats(color='green', linestyle='-', linewidth=0.8)
+    #skew.plot_mixing_lines(p=np.linspace(1000, 200, 100) * units.hectopascal) #,color='purple', linestyle='-.', linewidth=1.5)
+    #skew.plot_mixing_lines?
+    #fig.show()
+
+    # ax.set_xlabel(plot_options['taxis_label'],fontsize=10)
+    # ax.set_ylabel(plot_options['paxis_label'],fontsize=10)
+    # ax.set_title(plot_options['title'],fontsize=10)
 
     # Redraw the figure
-    canvas.draw()
-    canvas.print_figure(png_name,dpi=dpi)
+    # canvas.draw()
+    # canvas.print_figure(png_name,dpi=dpi)
+    fig.savefig(png_name,dpi=dpi)
 
-    return fig,ax
+    # return fig,ax
 
 
 def _argparse():
@@ -1029,7 +1074,7 @@ def main():
     input_file_list = granuleFiles(input_file)
 
     if input_file_list==[]:
-        LOG.warn('No files match the input file glob "{}", aborting.'
+        LOG.warning('No files match the input file glob "{}", aborting.'
                 .format(input_file))
         sys.exit(1)
 
