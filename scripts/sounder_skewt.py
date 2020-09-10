@@ -10,6 +10,7 @@ Purpose: Create a Skew-T plot from a range of input data. Supports outputs from
          * Microwave Integrated Retrieval System (MIRS)
          * CSPP Hyperspectral Retrieval (HSRTV) Package
          * NOAA Unique CrIS/ATMS Product System (NUCAPS)
+         * Hyper-Spectral Enterprise Algorithm Package (HEAP)
 
 Preconditions:
     * matplotlib (with basemap)
@@ -28,7 +29,7 @@ where...
     INPUTFILES: The fully qualified path to the input files. May be a
     directory or a file glob.
 
-    DATATYPE: One of 'IAPP','MIRS', 'HSRTV' or 'NUCAPS'.
+    DATATYPE: One of 'iapp','mirs', 'hsrtv', 'nucaps' OR 'heap'.
 
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2014-05-10.
@@ -44,6 +45,7 @@ import string
 import re
 import uuid
 from shutil import rmtree, copyfile
+from collections import OrderedDict
 from glob import glob
 from time import time
 from datetime import datetime, timedelta
@@ -75,11 +77,12 @@ import h5py
 
 import metpy
 from metpy.plots import SkewT
-# from metpy.units import units
+from metpy.units import units
 # import metpy.calc as mpcalc
 
 # import skewt as skT
 from thermo import dewhum
+from exceptions import UnsupportedInputType
 
 # import sounder_packages
 
@@ -177,7 +180,8 @@ def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
                 format(lat_0,lon_0))
 
         # Construct the kdtree
-        tree = ss.KDTree(list(zip(lon.ravel(), lat.ravel())))
+        # tree = ss.KDTree(list(zip(lon.ravel(), lat.ravel())))
+        tree = ss.KDTree(list(zip(lon_masked.ravel(), lat_masked.ravel())))
 
         # get index of each point which distance from (lon_0,lat_0) is under 1
         dist, dist_idx = tree.query([lon_0, lat_0], distance_upper_bound=1.)
@@ -726,6 +730,12 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
 
     try:
 
+        # Check if this type is upsupported
+        if 'IASI' in os.path.basename(nucaps_file).split('_')[0]:
+            raise UnsupportedInputType(
+                    f"""\t*[ERROR]: NUCAPS input files IASI*.nc ({os.path.basename(nucaps_file)}) are not supported, aborting"""
+                    )
+
         # Dimension names
         dimension_name = {}
         dimension_name['nfor'] = ['Number_of_CrIS_FORs', 'Number_of_Dice']
@@ -755,14 +765,8 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
         sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
         sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
 
-        # FIXME: Latitude not being read in correctly for IASI files
         lat = sounding_inputs['lat']['node'][:].reshape(nrows, ncols)
         lon = sounding_inputs['lon']['node'][:].reshape(nrows, ncols)
-
-        LOG.info(f"Latitude.shape = {lat[:20].shape}")
-        LOG.info(f"Longitude.shape = {lon[:20].shape}")
-        LOG.info(f"Latitude = {lat[:20]}")
-        LOG.info(f"Longitude = {lon[:20]}")
 
         # Fill in some missing attributes
         sounding_inputs['pres']['units'] = 'hPa'
@@ -799,6 +803,9 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
         LOG.info("Closing {}".format(nucaps_file))
         fileObj.close()
 
+    except UnsupportedInputType as e:
+        LOG.error(e.msg)
+        sys.exit(1)
     except Exception as err :
         LOG.warning("There was a problem, closing {}".format(nucaps_file))
         LOG.warning("{}".format(err))
@@ -855,6 +862,229 @@ def nucaps_sounder(nucaps_file_list,lat_0=None,lon_0=None):
     return sounding_inputs
 
 
+def heap_sounder(heap_file_list,lat_0=None,lon_0=None):
+    '''
+    Pressure: Pressure for each layer in mb (hPa)
+    Temperature: Temperature profile in K
+    H2O_MR: Water vapor profile (mixing ratio) in g/g
+    '''
+
+    '''
+    dimensions:
+            Number_of_CrIS_scans = 116 ;
+            Number_of_CrIS_FOR = 30 ;
+            Number_of_P_Levels = 100 ;
+            Number_of_MW_Spectral_Pts = 16 ;
+            Number_of_Surf_Emis_Hinge_Pts = 100 ;
+            Number_of_Cloud_Emis_Hing_Pts = 100 ;
+            Number_of_Cloud_Layers = 8 ;
+            Number_of_Stability_Parameters = 16 ;
+            Number_of_Ispares = 129 ;
+            Number_of_Rspares = 262 ;
+
+    variables:
+        float Latitude(Number_of_CrIS_scans, Number_of_CrIS_FOR) ;
+                Latitude:long_name = "Retrieval latitude values for each CrIS FOR" ;
+                Latitude:standard_name = "latitude" ;
+                Latitude:units = "degrees_north" ;
+                Latitude:parameter_type = "NUCAPS data" ;
+                Latitude:valid_range = -90.f, 90.f ;
+                Latitude:_FillValue = -9999.f ;
+
+        float Longitude(Number_of_CrIS_scans, Number_of_CrIS_FOR) ;
+                Longitude:long_name = "Retrieval longitude values for each CrIS FOR" ;
+                Longitude:standard_name = "longitude" ;
+                Longitude:units = "degrees_east" ;
+                Longitude:parameter_type = "NUCAPS data" ;
+                Longitude:valid_range = -180.f, 180.f ;
+                Longitude:_FillValue = -9999.f ;
+
+        float Pressure(Number_of_P_Levels) ;
+                Pressure:long_name = "Pressure" ;
+                Pressure:units = "mb" ;
+                Pressure:parameter_type = "NUCAPS data" ;
+                Pressure:valid_range = 0.f, 2000.f ;
+                Pressure:_FillValue = -9999.f ;
+
+        float Temperature(Number_of_CrIS_scans, Number_of_CrIS_FOR, Number_of_P_Levels) ;
+                Temperature:long_name = "Temperature" ;
+                Temperature:standard_name = "air_temperature" ;
+                Temperature:units = "Kelvin" ;
+                Temperature:parameter_type = "NUCAPS data" ;
+                Temperature:coordinates = "Latitude Longitude Pressure" ;
+                Temperature:valid_range = 0.f, 1000.f ;
+                Temperature:_FillValue = -9999.f ;
+
+        float H2O_MR(Number_of_CrIS_scans, Number_of_CrIS_FOR, Number_of_P_Levels) ;
+                H2O_MR:long_name = "water vapor mixing ratio" ;
+                H2O_MR:units = "kg/kg" ;
+                H2O_MR:parameter_type = "NUCAPS data" ;
+                H2O_MR:coordinates = "Latitude Longitude Effective_Pressure" ;
+                H2O_MR:valid_range = 0.f, 1.e+08f ;
+                H2O_MR:_FillValue = -9999.f ;
+
+        float Cloud_Top_Pressure(Number_of_CrIS_scans, Number_of_CrIS_FOR, Number_of_Cloud_Layers) ;
+                Cloud_Top_Pressure:long_name = "Cloud top pressure" ;
+                Cloud_Top_Pressure:units = "mb" ;
+                Cloud_Top_Pressure:parameter_type = "NUCAPS data" ;
+                Cloud_Top_Pressure:coordinates = "Latitude Longitude" ;
+                Cloud_Top_Pressure:valid_range = 0.f, 10000.f ;
+                Cloud_Top_Pressure:_FillValue = -9999.f ;
+    '''
+
+    data_labels = [
+                    'pres',
+                    'temp',
+                    'dwpt',
+                    'wvap',
+                    'relh',
+                    'lat',
+                    'lon'
+                    ]
+
+    sounding_inputs = {}
+    for label in data_labels:
+        sounding_inputs[label] = {}
+
+    sounding_inputs['pres']['dset_name'] = 'Pressure'
+    sounding_inputs['temp']['dset_name'] = 'Temperature'
+    sounding_inputs['wvap']['dset_name'] = 'H2O_MR'
+    sounding_inputs['lat']['dset_name']  = 'Latitude'
+    sounding_inputs['lon']['dset_name']  = 'Longitude'
+    sounding_inputs['dwpt'] = None
+    sounding_inputs['relh'] = None
+
+    LOG.debug("Input file list: {}".format(heap_file_list))
+
+    heap_file = heap_file_list[0]
+
+    # Open the file object
+    fileObj = Dataset(heap_file)
+
+    try:
+
+        # Dimension names
+        dimension_name = {}
+        dimension_name['nrows'] = ['Number_of_CrIS_scans', 'Number_of_IASI_scans']
+        dimension_name['ncols'] = ['Number_of_CrIS_FOR', 'Number_of_IASI_Dice']
+        dimension_name['nlevels'] = ['Number_of_P_Levels']
+
+        dimensions = {}
+        for key in dimension_name:
+            for key_var in dimension_name[key]:
+                try:
+                    dimensions[key] = fileObj.dimensions[key_var].size
+                    break
+                except:
+                    pass
+            LOG.debug("dimension {} = {}".format(key,dimensions[key]))
+
+        nrows = dimensions['nrows']
+        ncols = dimensions['ncols']
+        nlevels = dimensions['nlevels']
+
+        sounding_inputs['pres']['node'] = fileObj.variables['Pressure']
+        sounding_inputs['temp']['node'] = fileObj.variables['Temperature']
+        sounding_inputs['wvap']['node'] = fileObj.variables['H2O_MR']
+        sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
+        sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
+
+        lat = sounding_inputs['lat']['node'][:]
+        lon = sounding_inputs['lon']['node'][:]
+
+        # LOG.info(f"Latitude.shape = {lat.shape}")
+        # LOG.info(f"Longitude.shape = {lon.shape}")
+        # LOG.info(f"Latitude = {lat}")
+        # LOG.info(f"Longitude = {lon}")
+
+        # Fill in some missing attributes
+        sounding_inputs['pres']['units'] = 'hPa'
+        sounding_inputs['temp']['units'] = 'K'
+        sounding_inputs['wvap']['units'] = 'g/kg'
+
+        for label in data_labels:
+            if sounding_inputs[label] != None:
+                LOG.info(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
+                for attr_name in sounding_inputs[label]['node'].ncattrs():
+                    attr = getattr(sounding_inputs[label]['node'],attr_name)
+                    LOG.debug("{} = {}".format(attr_name,attr))
+                    sounding_inputs[label][attr_name] = attr
+
+        row,col = get_geo_indices(lat,lon,lat_0=lat_0,lon_0=lon_0)
+
+        if row==None or col==None:
+            raise Exception("No suitable lat/lon coordinates found, aborting...")
+
+        LOG.debug("Retrieved row,col = {},{}".format(row,col))
+        sounding_inputs['lat_0'] = lat[row,col]
+        sounding_inputs['lon_0'] = lon[row,col]
+        #row,col = 10,10
+
+        sounding_inputs['pres']['data'] = sounding_inputs['pres']['node'][:]
+
+        sounding_inputs['temp']['data'] = sounding_inputs['temp']['node'][row,col,:]
+
+        # Convert water vapor from g/g to g/kg
+        sounding_inputs['wvap']['data'] = 1000.*sounding_inputs['wvap']['node'][row,col,:]
+
+        LOG.info("Closing {}".format(heap_file))
+        fileObj.close()
+
+    except Exception as err :
+        LOG.warning("There was a problem, closing {}".format(heap_file))
+        LOG.warning("{}".format(err))
+        LOG.debug(traceback.format_exc())
+        fileObj.close()
+        LOG.info("Exiting...")
+        sys.exit(1)
+
+    # Construct the masks of the various datasets, and mask the data accordingly
+    for label in ['temp','wvap']:
+        if sounding_inputs[label] != None:
+            LOG.debug(">>> Processing {} ..."
+                    .format(sounding_inputs[label]['dset_name']))
+            fill_value = sounding_inputs[label]['_FillValue']
+            data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
+            LOG.debug("ma.is_masked({}) = {}".format(label,ma.is_masked(data)))
+
+            if ma.is_masked(data):
+                if data.mask.shape == ():
+                    data_mask = np.ones(data.shape,dtype='bool')
+                else:
+                    data_mask = data.mask
+            else:
+                data_mask = np.zeros(data.shape,dtype='bool')
+
+            LOG.debug("There are {}/{} masked values in {}".\
+                    format(np.sum(data_mask),data.size,label))
+
+            sounding_inputs[label]['mask'] = data_mask
+            sounding_inputs[label]['data'] = ma.array(data,mask=data_mask)
+
+    # Computing the relative humidity
+    sounding_inputs['dwpt'] = {}
+    sounding_inputs['relh'] = {}
+
+    dewhum_vec = np.vectorize(dewhum)
+    dwpt,rh,_ = dewhum_vec(
+            sounding_inputs['pres']['data'],
+            sounding_inputs['temp']['data'],
+            sounding_inputs['wvap']['data']
+            )
+
+    # In case of over-saturation...
+    dwpt = np.minimum(dwpt,sounding_inputs['temp']['data'])
+
+    sounding_inputs['dwpt']['data'] = dwpt
+    sounding_inputs['dwpt']['units'] = 'K'
+    sounding_inputs['dwpt']['long_name'] = 'Dew-point Temperature profile in K'
+
+    sounding_inputs['relh']['data'] = rh
+    sounding_inputs['relh']['units'] = '%'
+    sounding_inputs['relh']['long_name'] = 'Relative Humidity'
+
+    return sounding_inputs
+
 
 def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options):
 
@@ -881,8 +1111,8 @@ def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options)
 
     # Plot the data using normal plotting functions, in this case using
     # log scaling in Y, as dictated by the typical meteorological plot
-    skew.plot(p, t, 'r', label=plot_options['T_legend'])
-    skew.plot(p, td, 'g', label=plot_options['Td_legend'])
+    skew.plot(p, t, 'r', label=plot_options['T_legend'], linewidth=2.5)
+    skew.plot(p, td, 'g', label=plot_options['Td_legend'], linewidth=2.5)
     skew.ax.set_ylim(1000, 100)
     skew.ax.set_xlim(-40., 45.)
     skew.ax.legend(fontsize=10)
@@ -896,11 +1126,14 @@ def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options)
     skew.ax.set_title(plot_options['title'],fontsize=12)
 
     # Add the relevant special lines
-    #skew.plot_dry_adiabats(color='brown', linestyle='-', linewidth=0.8)
-    #skew.plot_moist_adiabats(color='green', linestyle='-', linewidth=0.8)
-    #skew.plot_mixing_lines(p=np.linspace(1000, 200, 100) * units.hectopascal) #,color='purple', linestyle='-.', linewidth=1.5)
-    #skew.plot_mixing_lines?
-    #fig.show()
+    # skew.plot_dry_adiabats(color='brown', linestyle='-', linewidth=0.8)
+    # skew.plot_moist_adiabats(color='green', linestyle='-', linewidth=0.8)
+    # skew.plot_mixing_lines(p=np.linspace(1000, 200, 100) * units.hectopascal ,color='purple', linestyle='-.', linewidth=1.5)
+
+    skew.plot_dry_adiabats()
+    skew.plot_moist_adiabats()
+    skew.plot_mixing_lines()
+    skew.ax.set_ylim(1000, 100)
 
     # ax.set_xlabel(plot_options['taxis_label'],fontsize=10)
     # ax.set_ylabel(plot_options['paxis_label'],fontsize=10)
@@ -921,7 +1154,14 @@ def _argparse():
 
     import argparse
 
-    dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
+    # dataChoices=['iapp','mirs','hsrtv','nucaps', 'heap']
+    dataChoices = OrderedDict([
+            ('iapp', 'International TOVS Processing Package'),
+            ('mirs', 'Microwave Integrated Retrieval System'),
+            ('hsrtv', 'CrIS, AIRS and IASI Hyperspectral Retrieval Software'),
+            ('heap', 'Hyper-Spectral Enterprise Algorithm Package'),
+            ('nucaps', 'NOAA Unique Combined Atmospheric Processing System')
+            ])
 
     defaults = {
                 'input_file':None,
@@ -938,11 +1178,18 @@ def _argparse():
     description = '''Create a Skew-T plot from input sounder data.'''
 
     usage = "usage: %prog [mandatory args] [options]"
-    version = "v1.0"
+    version = "v2.0"
 
-    parser = argparse.ArgumentParser(
-                                     #version=version,
-                                     description=description
+    # parser = argparse.ArgumentParser(
+                                     # #version=version,
+                                     # description=description
+                                     # )
+    epilog = ''
+    parser = argparse.ArgumentParser(description=description,
+                                     formatter_class=argparse.RawTextHelpFormatter,
+                                     add_help=True,
+                                     # add_help=False,
+                                     epilog=epilog
                                      )
 
     # Mandatory/positional arguments
@@ -951,7 +1198,7 @@ def _argparse():
                       action='store',
                       dest='input_file',
                       type=str,
-                      help='''The fully qualified path to a single level-1d input file.'''
+                      help='''The fully qualified path to a single input file.'''
                       )
 
     parser.add_argument(
@@ -960,10 +1207,14 @@ def _argparse():
                       default=defaults["datatype"],
                       type=str,
                       choices=dataChoices,
-                      help='''The type of the input sounder data file.\n\n
-                              Possible values are...
-                              {}.
-                           '''.format(dataChoices.__str__()[1:-1])
+                      help="""The type of the input sounder data file. Possible values """ \
+            """are:\n {}""".format(
+            "".join(["\t'{0:8s} ({1}),\n".format(tups[0]+"'",tups[1]) for
+                tups in zip(dataChoices.keys(),dataChoices.values())]))
+                      # help='''The type of the input sounder data file.\n\n
+                              # Possible values are...
+                              # {}.
+                           # '''.format(dataChoices.__str__()[1:-1])
                       )
 
     # Optional arguments
@@ -1083,16 +1334,18 @@ def main():
     # Read in the input file, and return a doctionary containing the required
     # data
 
-    dataChoices=['IAPP','MIRS','HSRTV','NUCAPS']
+    dataChoices=['iapp','mirs','hsrtv','nucaps', 'heap']
 
-    if datatype == 'IAPP' :
+    if datatype == 'iapp' :
         sounding_inputs = iapp_sounder(input_file_list,lat_0=lat_0,lon_0=lon_0)
-    elif datatype == 'MIRS' :
+    elif datatype == 'mirs' :
         sounding_inputs = mirs_sounder(input_file_list,lat_0=lat_0,lon_0=lon_0)
-    elif datatype == 'HSRTV' :
+    elif datatype == 'hsrtv' :
         sounding_inputs = hsrtv_sounder(input_file_list,lat_0=lat_0,lon_0=lon_0)
-    elif datatype == 'NUCAPS' :
+    elif datatype == 'nucaps' :
         sounding_inputs = nucaps_sounder(input_file_list,lat_0=lat_0,lon_0=lon_0)
+    elif datatype == 'heap' :
+        sounding_inputs = heap_sounder(input_file_list,lat_0=lat_0,lon_0=lon_0)
     else:
         pass
 

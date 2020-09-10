@@ -9,5 +9,6 @@ if [ -z "${CSPP_SOUNDER_QL_HOME}" ]; then
     echo "i.e.: export CSPP_SOUNDER_QL_HOME=/home/me/cspp_sounder_ql"
     exit 1
 fi
-export PATH=${PATH}:${CSPP_SOUNDER_QL_HOME}/vendor/ShellB3/bin
+#export PATH=${PATH}:${CSPP_SOUNDER_QL_HOME}/vendor/ShellB3/bin
+export PATH=${PATH}:${CSPP_SOUNDER_QL_HOME}/vendor/env/bin
 export PATH=${PATH}:${CSPP_SOUNDER_QL_HOME}/bin:${CSPP_SOUNDER_QL_HOME}/scripts

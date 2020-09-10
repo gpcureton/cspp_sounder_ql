@@ -725,14 +725,14 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
     lat_0         = plot_options['lat_0']
     lon_0         = plot_options['lon_0']
     #pres_0        = plot_options['pres_0']
-    latMin        = plot_options['latMin']
-    lonMin        = plot_options['lonMin']
-    latMax        = plot_options['latMax']
-    lonMax        = plot_options['lonMax']
+    # latMin        = plot_options['latMin']
+    # lonMin        = plot_options['lonMin']
+    # latMax        = plot_options['latMax']
+    # lonMax        = plot_options['lonMax']
+    # bounding_lat  = plot_options['bounding_lat']
     proj          = plot_options['proj']
 
     # Copy the plot options to local variables
-
     title         = plot_style_options['title']
     cbar_title    = plot_style_options['cbar_title']
     stride        = plot_style_options['stride']
@@ -846,20 +846,30 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
     lon = lon.filled()
     data = data.filled()
 
-    plotMin = np.min(data) if plotMin is None else plotMin
-    plotMax = np.max(data) if plotMax is None else plotMax
-    LOG.debug("plotMin = {}".format(plotMin))
-    LOG.debug("plotMax = {}".format(plotMax))
+    LOG.debug(f"initial plotMin = {plotMin}")
+    LOG.debug(f"initial plotMax = {plotMax}")
+    LOG.debug(f"np.nanmin(data) = {np.nanmin(data)}")
+    LOG.debug(f"np.nanmax(data) = {np.nanmax(data)}")
+
+    if plotMin is not None:
+        plotMin = np.nanmin(data) if (np.nanmin(data)>plotMin) else plotMin
+    if plotMax is not None:
+        plotMax = np.nanmax(data) if (np.nanmax(data)<plotMax) else plotMax
+
+    LOG.debug("final plotMin = {}".format(plotMin))
+    LOG.debug("final plotMax = {}".format(plotMax))
 
     LOG.info("cmap = {}".format(cmap.name))
 
     if doScatterPlot:
         cs = ax.scatter(lon, lat, s=pointSize, c=data,
                 transform=ccrs.PlateCarree(),
+                vmin=plotMin,vmax=plotMax,
                 cmap=cmap, zorder=0)
     else:
         cs = ax.pcolor(lon, lat, data,
                 transform=ccrs.PlateCarree(),
+                vmin=plotMin,vmax=plotMax,
                 cmap=cmap, zorder=0)
 
     ax.coastlines(resolution=coast_res, linewidth=0.5, edgecolor='0.2', zorder=0)
@@ -923,36 +933,17 @@ def plotMapDataContinuous(lat, lon, data, data_mask, pngName,
         dataset_options, plot_style_options, plot_options):
 
     # Copy the plot options to local variables
-    #title         = plot_options['title']
-    #cbar_title    = plot_options['cbar_title']
-    #units         = plot_options['units']
-    #stride        = plot_options['stride']
     lat_0         = plot_options['lat_0']
     lon_0         = plot_options['lon_0']
-    #pres_0        = plot_options['pres_0']
     latMin        = plot_options['latMin']
     lonMin        = plot_options['lonMin']
     latMax        = plot_options['latMax']
     lonMax        = plot_options['lonMax']
-    #plotMin       = plot_options['plotMin']
-    #plotMax       = plot_options['plotMax']
     bounding_lat  = plot_options['bounding_lat']
     scale         = plot_options['scale']
-    #map_res       = plot_options['map_res']
     proj          = plot_options['proj']
-    #cmap          = plot_options['cmap']
-    #doScatterPlot = plot_options['scatterPlot']
-    #pointSize     = plot_options['pointSize']
-    #dpi           = plot_options['dpi']
 
     # Copy the plot options to local variables
-    #llcrnrx        = plot_nav_options['llcrnrx']
-    #llcrnry        = plot_nav_options['llcrnry']
-    #urcrnrx        = plot_nav_options['urcrnrx']
-    #urcrnry        = plot_nav_options['urcrnry']
-
-    #lon_0         = plot_nav_options['lon_0']
-
     title         = plot_style_options['title']
     cbar_title    = plot_style_options['cbar_title']
     stride        = plot_style_options['stride']
@@ -2189,7 +2180,6 @@ def plotSliceDiscrete(lat, lon, lat_arr, lon_arr, pressure, elevation, data, dat
     return 0
 
 
-#def set_plot_styles(data_obj, dataset_options, options, plot_nav_options):
 def set_plot_styles(dfile_obj, dset, dataset_options, options):
     """
     Collects the various plot formatting options and does any required tweaking
@@ -2225,8 +2215,8 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
             else:
                 pass
 
-        elif options.plot_type == 'slice':
-            vert_lev_str = "(footprint {})".format(options.footprint)
+        # elif options.plot_type == 'slice':
+            # vert_lev_str = "(footprint {})".format(options.footprint)
 
         plot_style_options['title'] = "{} , {} {}\n{}Z".format(
                 dfile_obj.datasets['file_attrs'][filenames[0]]['Satellite_Name'],

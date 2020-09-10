@@ -19,7 +19,7 @@ from datetime import datetime
 LOG = logging.getLogger('sounder_packages')
 
 
-class Sounder_Packages():
+class Sounder_Packages(object):
     '''
     The various software packages treat some datasets differently. Below is a summary...
 

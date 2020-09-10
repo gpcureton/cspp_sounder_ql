@@ -1,11 +1,10 @@
-
 #!/usr/bin/env python
 # encoding: utf-8
 """
-MIRS.py
+HSRTV.py
 
-Purpose: Provide read methods for various datasets associated with the 
-Microwave Integrated Retrieval System (MIRS) Package.
+Purpose: Provide read methods for various datasets associated with the
+Hyperspectral Retrieval (HSRTV) Package.
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2015-04-07.
 Copyright (c) 2012-2016 University of Wisconsin Regents. All rights reserved.
@@ -42,104 +41,152 @@ from numpy import ma
 import copy
 
 from ql_common import get_pressure_index, get_geo_indices, get_pressure_level
-from ql_common import Datafile_NetCDF
+from ql_common import Datafile_HDF5
 from thermo import rh_to_mr
 
-from sounder_packages import Sounder_Packages
+from .sounder_packages import Sounder_Packages
 
 # every module should have a LOG object
 LOG = logging.getLogger(__file__)
 
+# Dimension names
+dimension_name_0 = {}
+dimension_name_0['nrows'] = 'Along_Track_Y'
+dimension_name_0['ncols'] = 'Across_Track_X'
+dimension_name_0['nlevels'] = 'Number_of_Levels'
+dimension_name = {}
+dimension_name['nrows'] = ['Along_Track_Y']
+dimension_name['ncols'] = ['Across_Track_X']
+dimension_name['nlevels'] = ['Number_of_Levels']
+
 # Files dataset names for each dataset type
 dset_name = {}
-dset_name['pres'] = 'Player'
+dset_name['pres'] = '/Plevs'
 dset_name['pres_array'] = None
-dset_name['lat']  = 'Latitude'
-dset_name['lon']  = 'Longitude'
-dset_name['ctp']  = None
-dset_name['ctt']  = None
-dset_name['temp'] = 'PTemp'
+dset_name['lat'] = '/Latitude'
+dset_name['lon'] = '/Longitude'
+dset_name['ctp'] = '/CTP'
+dset_name['ctt'] = '/CTT'
+dset_name['temp'] = '/TAir'
+dset_name['temp_gdas'] = '/GDAS_TAir'
+#dset_name['temp_gdas_cube'] = None
 dset_name['2temp'] = None
 dset_name['cold_air_aloft'] = None
-dset_name['dwpt'] = None
-dset_name['relh'] = None
-dset_name['wvap'] = 'PVapor'
+dset_name['dwpt'] = '/Dewpnt'
+dset_name['relh'] = '/RelHum'
+dset_name['relh_gdas'] = '/GDAS_RelHum'
+#dset_name['relh_gdas_cube'] = None
+dset_name['wvap'] = '/H2OMMR'
+dset_name['wvap_gdas'] = None
+#dset_name['wvap_gdas_cube'] = None
 
 # Dataset types (surface/top; pressure level...)
 dset_type = {}
 dset_type['pres'] = 'profile'
 dset_type['pres_array'] = 'level'
-dset_type['lat']  = 'single'
-dset_type['lon']  = 'single'
-dset_type['ctp']  = 'level'
-dset_type['ctt']  = 'level'
+dset_type['lat'] = 'single'
+dset_type['lon'] = 'single'
+dset_type['ctp'] = 'single'
+dset_type['ctt'] = 'single'
 dset_type['temp'] = 'level'
+dset_type['temp_gdas'] = 'level'
+#dset_type['temp_gdas_cube'] = 'level'
 dset_type['2temp'] = 'level'
 dset_type['cold_air_aloft'] = 'level'
 dset_type['dwpt'] = 'level'
 dset_type['relh'] = 'level'
+dset_type['relh_gdas'] = 'level'
+#dset_type['relh_gdas_cube'] = 'level'
 dset_type['wvap'] = 'level'
+dset_type['wvap_gdas'] = 'level'
+#dset_type['wvap_gdas_cube'] = 'level'
 
 # Dataset dependencies for each dataset
-
 dset_deps = {}
 dset_deps['pres'] = []
 dset_deps['pres_array'] = []
-dset_deps['lat']  = []
-dset_deps['lon']  = []
-dset_deps['ctp']  = []
-dset_deps['ctt']  = []
-dset_deps['temp'] = []
+dset_deps['lat'] = []
+dset_deps['lon'] = []
+dset_deps['ctp'] = []
+dset_deps['ctt'] = []
+dset_deps['temp'] = [] ## TEST
+dset_deps['temp_gdas'] = []
+#dset_deps['temp_gdas_cube'] = []
 dset_deps['2temp'] = ['temp']
 dset_deps['cold_air_aloft'] = ['temp', 'wvap', 'temp_gdas', 'relh_gdas']
 dset_deps['dwpt'] = []
+dset_deps['relh'] = []
+dset_deps['relh_gdas'] = []
+#dset_deps['relh_gdas_cube'] = []
 dset_deps['wvap'] = []
-dset_deps['relh'] = ['temp','wvap']
+dset_deps['wvap_gdas'] = ['temp_gdas', 'pres_array', 'relh_gdas']
+#dset_deps['wvap_gdas_cube'] = ['temp_gdas','pres_array','relh_gdas']
 
 # The class method used to read/calculate each dataset.
 dset_method = {}
 dset_method['pres'] = []
-dset_method['lat']  = []
-dset_method['lon']  = []
-dset_method['ctp']  = []
-dset_method['ctt']  = []
+dset_method['pres_array'] = []
+dset_method['lat'] = []
+dset_method['lon'] = []
+dset_method['ctp'] = []
+dset_method['ctt'] = []
 dset_method['temp'] = []
+dset_method['temp_gdas'] = []
+#dset_method['temp_gdas_cube'] = []
 dset_method['2temp'] = []
 dset_method['cold_air_aloft'] = []
 dset_method['dwpt'] = []
 dset_method['relh'] = []
+dset_method['relh_gdas'] = []
+#dset_method['relh_gdas_cube'] = []
 dset_method['wvap'] = []
+dset_method['wvap_gdas'] = []
+#dset_method['wvap_gdas_cube'] = []
 
-class MIRS_Datafile_NetCDF(Datafile_NetCDF):
-    def __init__(self, *args, **kwargs):
-        LOG.debug("Inside MIRS_Datafile_NetCDF")
-        Datafile_NetCDF.__init__(self, *args, **kwargs)
 
-class MIRS(Sounder_Packages):
+class Hsrtv(Sounder_Packages):
     '''
-    Player: Pressure for each layer in mb (hPa)
-    PTemp: Temperature profile in K
-    PVapor: Water vapor profile (mixing ratio) in g/kg
+    Plevs: Pressure for each level in mb (hPa)
+    TAir: Temperature profile in K
+    Dewpnt: Water vapor profile (mixing ratio) in g/kg
+
+    /Latitude
+        missing_value : -9999.
+        units : degrees_north
+        valid_range : -90.0,90.0
+    /Longitude
+        missing_value : -9999.
+        units : degrees_east
+        valid_range : -180.0,180.0
+    /Plevs
+        description: vertical coordinate axis (101 pressure levels)
+        units : hPa
+    /TAir
+        description : retrieved temperature profile at 101 levels
+        missing_value : -9999.
+        units : K
+    /Dewpnt
+        description : dew point temperature profile
+        missing_value : -9999.
+        units : K
+    /RelHum
+        description : retrieved relative humidity at 101 levels
+        missing_value : -9999.
+        units : %
+    /H2OMMR
+        description : retrieved humidity (water vapor mixing ratio) profile at
+                      101 levels
+        missing_value : -9999.
+        units : g/kg
+    /CTP
+        description : Cloud top pressure
+        missing_value : -9999.
+        units : hPa
+    /CTT
+        description : Cloud top temperature
+        missing_value : -9999.
+        units : K
     '''
-
-    '''
-    float Latitude(Scanline, Field_of_view) ;
-            Latitude:long_name = "Latitude of the view (-90,90)" ;
-            
-    float Longitude(Scanline,Field_of_view) ;
-            Longitude:long_name = "Longitude of the view (-180,180)" ;
-
-    float Player(P_Layer) ;
-            Player:description = "Pressure for each layer in mb" ;
-
-    float PTemp(Scanline, Field_of_view, P_Layer) ;
-            PTemp:long_name = "Temperature profile in K" ;
-            PTemp:scale = 1. ;
-
-    float PVapor(Scanline, Field_of_view, P_Layer) ;
-            PVapor:long_name = "Water vapor profile in g/kg" ;
-            PVapor:scale = 1. ;
-    '''         
 
     def __init__(self, *args, **kwargs):
         Sounder_Packages.__init__(self, *args, **kwargs)
@@ -147,13 +194,15 @@ class MIRS(Sounder_Packages):
         file_list, data_name, plot_type = args
 
         pres_0 = kwargs['pres_0']
-        elev_0 = kwargs['elev_0']
+        # elev_0 = kwargs['elev_0']
         lat_0 = kwargs['lat_0']
         lon_0 = kwargs['lon_0']
-        footprint = kwargs['footprint']
+        # footprint = kwargs['footprint']
 
         self.file_list = file_list
+        self.plot_type = plot_type
         self.have_geo = False
+        self.dimensions = {}
         self.datasets = {}
 
         # Construct a list of the required datasets...
@@ -174,148 +223,177 @@ class MIRS(Sounder_Packages):
 
         # Define any special methods for computing the required dataset
         dset_method['2temp'] = self.temp_times_two
-        #dset_method['cold_air_aloft'] = self.cold_air_aloft
+        dset_method['cold_air_aloft'] = self.cold_air_aloft
         #dset_method['temp_gdas'] = self.temp_gdas
         #dset_method['relh_gdas'] = self.relh_gdas
-        #dset_method['wvap_gdas'] = self.wvap_gdas
+        dset_method['wvap_gdas'] = self.wvap_gdas
         dset_method['pres_array'] = self.pressure_array
 
         # Read in the pressure dataset
         LOG.info(">>> Reading in the pressure dataset...")
-        dfile_obj = Datafile_NetCDF(file_list[0])
-        #dfile_obj = MIRS_Datafile_NetCDF(file_list[0])
+        dfile_obj = Datafile_HDF5(file_list[0])
         data_obj = dfile_obj.Dataset(dfile_obj,dset_name['pres'])
         self.pressure = data_obj.dset[:]
+        LOG.info(f"self.pressure.shape = {self.pressure.shape}")
+
+        LOG.debug(f"{dfile_obj.attrs.items()}")
+        LOG.debug(f"Along_Track_Y = {dfile_obj.attrs['Along_Track_Y']}")
+        LOG.debug(f"Across_Track_X = {dfile_obj.attrs['Across_Track_X']}")
+        LOG.debug(f"Number_of_Levels = {dfile_obj.attrs['Number_of_Levels']}")
+
+        for key in dimension_name:
+            found_dim = False
+            for key_var in dimension_name[key]:
+                try:
+                    self.dimensions[key] = int(dfile_obj.attrs[key_var])
+                    found_dim = True
+                    break
+                except Exception as err :
+                    LOG.warn(f"\tThere was a problem reading dimensions '{key}'")
+                    LOG.warn("\t{}".format(err))
+                    LOG.debug(traceback.format_exc())
+            if not found_dim:
+                LOG.error(f"Failed to find dimension match for '{key}' for {os.path.basename(file_list[0])}, is this a valid {type(self).__name__.upper()} file?")
+                dfile_obj.close()
+                sys.exit(1)
+            LOG.debug("dimension {} = {}".format(key,self.dimensions[key]))
+
         dfile_obj.close()
 
         # Determine the elevation dataset...
-        self.elev_0 = elev_0
-        if elev_0 != None:
+        self.pres_0 = pres_0
+        # self.elev_0 = elev_0
+
+        # if elev_0 != None:
 
 
-            # Create a cube of the temp_gdas and relh_gdas datasets...
-            LOG.info("Constructing a cube dataset...")
-            self.construct_cube_pass(file_list,['temp_gdas','relh_gdas'])
+            # # Create a cube of the temp_gdas and relh_gdas datasets...
+            # LOG.info("Constructing a cube dataset...")
+            # self.construct_cube_pass(file_list,['temp_gdas','relh_gdas'])
 
-            # Construct the pressure cube
-            #cube_shape = self.datasets['temp_gdas']['data'].shape
-            #nlevels,nrows,ncols = cube_shape[0],cube_shape[1],cube_shape[2]
-            (nlevels,nrows,ncols) = self.datasets['temp']['data'].shape
-            self.datasets['pressure'] = {}
-            self.datasets['pressure']['data'] = np.broadcast_to(np.broadcast_to(self.pressure,(nrows,nlevels)),(ncols,nrows,nlevels)).T
-            self.datasets['pressure']['attrs'] = {}
-            LOG.info("pressure cube shape = {}".format(self.datasets['pressure']['data'].shape))
+            # # Construct the pressure cube
+            # #cube_shape = self.datasets['temp_gdas']['data'].shape
+            # #nlevels,nrows,ncols = cube_shape[0],cube_shape[1],cube_shape[2]
+            # (nlevels,nrows,ncols) = self.datasets['temp_gdas']['data'].shape
+            # self.datasets['pressure'] = {}
+            # self.datasets['pressure']['data'] = np.broadcast_to(np.broadcast_to(self.pressure,(nrows,nlevels)),(ncols,nrows,nlevels)).T
+            # self.datasets['pressure']['attrs'] = {}
+            # LOG.info("pressure cube shape = {}".format(self.datasets['pressure']['data'].shape))
 
-            # Compute the wvap_gdas dataset
-            self.datasets['wvap_gdas'] = {}
-            self.datasets['wvap_gdas']['attrs'] = {}
-            self.datasets['wvap_gdas']['data'] = np.array([1]) # placeholder
-            level = -4
-            press = self.datasets['pressure']['data']
-            relh = ma.array(self.datasets['relh_gdas']['data'],mask=self.datasets['relh_gdas']['data_mask'])
-            temp = ma.array(self.datasets['temp_gdas']['data'],mask=self.datasets['temp_gdas']['data_mask'])
-            # Compute the elevation cube
-            self.elevation = get_elevation(press,temp,relh)
+            # # Compute the wvap_gdas dataset
+            # self.datasets['wvap_gdas'] = {}
+            # self.datasets['wvap_gdas']['attrs'] = {}
+            # self.datasets['wvap_gdas']['data'] = np.array([1]) # placeholder
+            # press = self.datasets['pressure']['data']
+            # relh = ma.array(self.datasets['relh_gdas']['data'],mask=self.datasets['relh_gdas']['data_mask'])
+            # temp = ma.array(self.datasets['temp_gdas']['data'],mask=self.datasets['temp_gdas']['data_mask'])
 
-            # Get the cube indicies that correspond to the value of match_val...
-            match_val = elev_0
-            cube_idx = get_level_indices(self.elevation,match_val)
-            self.cube_idx = cube_idx
 
-            elev_level = -9999. * np.ones(self.elevation[0].shape,dtype='float')
-            elev_level[(cube_idx[1],cube_idx[2])] = self.elevation[cube_idx]
-            LOG.info("\nelev_level = \n{}".format(elev_level))
+            # # Compute the elevation cube
+            # self.elevation = get_elevation(press,temp,relh)
 
+            # # Get the cube indicies that correspond to the value of match_val...
+            # match_val = elev_0
+            # cube_idx = get_level_indices(self.elevation,match_val)
+            # self.cube_idx = cube_idx
+            # LOG.info("\ncube_idx = \n{}".format(cube_idx))
+
+            # elev_level = -9999. * np.ones(self.elevation[0].shape,dtype='float')
+            # elev_level[(cube_idx[1],cube_idx[2])] = self.elevation[cube_idx]
+            # LOG.info("\nelev_level = \n{}".format(elev_level))
+
+            #sys.exit(0)
 
         if plot_type == 'image':
 
             LOG.info("Preparing a 'level' plot...")
 
-            if elev_0 != None:
-                # Contruct a pass of the required datasets at the desired pressure.
-                self.construct_level_pass(file_list,None,cube_idx,None,None)
-            else:
+            # if elev_0 != None:
+                # # Contruct a pass of the required datasets at the desired pressure.
+                # self.construct_level_pass(file_list,None,cube_idx,None,None)
+            # else:
+            if True:
                 # Determine the level closest to the required pressure
                 self.level,self.pres_0 = get_pressure_level(self.pressure,pres_0)
                 # Contruct a pass of the required datasets at the desired pressure.
                 self.construct_level_pass(file_list,self.level,None,None,None)
 
-            LOG.debug("\n\n>>> Intermediate dataset manifest...\n")
-            LOG.debug(self.print_dataset_manifest(self))
-
-        elif plot_type == 'slice':
-
-            if dset_type[data_name] == 'single':
-                LOG.warn("Cannot plot a slice of the single level dataset '{}', aborting...".format(data_name))
-                sys.exit(1)
-
-
-            LOG.info("Preparing a 'slice' plot...")
-            self.level,self.pres_0 = None,0
-
-            total_dsets_to_read = list(self.dsets_to_read)
-            self.dsets_to_read = ['lat','lon']
-
-            # Getting the full latitude and longitude
-            LOG.info(">>> Reading in the lat and lon arrays...")
-            self.construct_level_pass(file_list,None,None,None,None)
+            LOG.info("\t\tplot type is {}".format(self.plot_type))
 
             LOG.debug("\n\n>>> Intermediate dataset manifest...\n")
             LOG.debug(self.print_dataset_manifest(self))
 
-            LOG.info("Computing the row/col and lon_0/lat_0 from the lon/lat pass...")
-            self.row,self.col,self.lat_0,self.lon_0 \
-                    = get_geo_indices(self.datasets['lat']['data'],
-                                      self.datasets['lon']['data'],
-                                      lat_0=None,lon_0=None)
-            if footprint != None:
-                self.col = footprint
+        # elif plot_type == 'slice':
 
-            for dsets in ['lat_row','lat_col','lon_row','lon_col']:
-                self.datasets[dsets] = {}
+            # if dset_type[data_name] == 'single':
+                # LOG.warn("Cannot plot a slice of the single level dataset '{}', aborting...".format(data_name))
+                # sys.exit(1)
 
 
-            self.datasets['lat_row']['data'] = self.datasets['lat']['data'][self.row,:]
-            self.datasets['lat_col']['data'] = self.datasets['lat']['data'][:,self.col]
-            self.datasets['lat_row']['attrs'] =  dict(self.datasets['lat']['attrs'])
-            self.datasets['lat_col']['attrs'] =  dict(self.datasets['lat']['attrs'])
+            # LOG.info("Preparing a 'slice' plot...")
+            # self.level,self.pres_0 = None,0
 
-            self.datasets['lon_row']['data'] = self.datasets['lon']['data'][self.row,:]
-            self.datasets['lon_col']['data'] = self.datasets['lon']['data'][:,self.col]
-            self.datasets['lon_row']['attrs'] =  dict(self.datasets['lon']['attrs'])
-            self.datasets['lon_col']['attrs'] =  dict(self.datasets['lon']['attrs'])
+            # total_dsets_to_read = list(self.dsets_to_read)
+            # self.dsets_to_read = ['lat','lon']
 
-            if elev_0 != None:
-                self.datasets['elev_slice'] = {}
-                self.datasets['elev_slice']['data'] = self.elevation[:,:,self.col]
-                self.datasets['elev_slice']['attrs'] = {}
+            # # Getting the full latitude and longitude
+            # LOG.info(">>> Reading in the lat and lon arrays...")
+            # self.construct_level_pass(file_list,None,None,None,None)
 
-            self.dsets_to_read = list(total_dsets_to_read)
-            self.dsets_to_read.remove('lat')
-            self.dsets_to_read.remove('lon')
+            # LOG.debug("\n\n>>> Intermediate dataset manifest...\n")
+            # LOG.debug(self.print_dataset_manifest(self))
 
-            LOG.info(">>> Reading in the remaining dataset slices..")
-            slice_along_col = True
-            if slice_along_col:
-                LOG.debug("along column: (row,col,level)  = ({}, {}, {})".format(None,self.col,None))
-                # This is to slice along a column (across the rows)
-                self.construct_slice_pass(file_list, None, None, self.col)
-            else:
-                LOG.debug("along row: (row,col,level)  = ({}, {}, {})".format(self.row,None,None))
-                # This is to slice along a row (across the columns)
-                self.construct_slice_pass(file_list, None, self.row, None)
+            # LOG.info("Computing the row/col and lon_0/lat_0 from the lon/lat pass...")
+            # self.row,self.col,self.lat_0,self.lon_0 \
+                    # = get_geo_indices(self.datasets['lat']['data'],
+                                      # self.datasets['lon']['data'],
+                                      # lat_0=None,lon_0=None)
+            # if footprint != None:
+                # self.col = footprint
 
-            self.dsets_to_read = list(total_dsets_to_read)
+            # for dsets in ['lat_row','lat_col','lon_row','lon_col']:
+                # self.datasets[dsets] = {}
+
+
+            # self.datasets['lat_row']['data'] = self.datasets['lat']['data'][self.row,:]
+            # self.datasets['lat_col']['data'] = self.datasets['lat']['data'][:,self.col]
+            # self.datasets['lat_row']['attrs'] =  dict(self.datasets['lat']['attrs'])
+            # self.datasets['lat_col']['attrs'] =  dict(self.datasets['lat']['attrs'])
+
+            # self.datasets['lon_row']['data'] = self.datasets['lon']['data'][self.row,:]
+            # self.datasets['lon_col']['data'] = self.datasets['lon']['data'][:,self.col]
+            # self.datasets['lon_row']['attrs'] =  dict(self.datasets['lon']['attrs'])
+            # self.datasets['lon_col']['attrs'] =  dict(self.datasets['lon']['attrs'])
+
+            # if elev_0 != None:
+                # self.datasets['elev_slice'] = {}
+                # self.datasets['elev_slice']['data'] = self.elevation[:,:,self.col]
+                # self.datasets['elev_slice']['attrs'] = {}
+
+            # self.dsets_to_read = list(total_dsets_to_read)
+            # self.dsets_to_read.remove('lat')
+            # self.dsets_to_read.remove('lon')
+
+            # LOG.info(">>> Reading in the remaining dataset slices..")
+            # slice_along_col = True
+            # if slice_along_col:
+                # LOG.debug("along column: (level,row,col)  = ({}, {}, {})".format(None,None,self.col))
+                # # This is to slice along a column (across the rows)
+                # self.construct_slice_pass(file_list,None,None,self.col)
+            # else:
+                # LOG.debug("along row: (level,row,col)  = ({}, {}, {})".format(None,self.row,None))
+                # # This is to slice along a row (across the columns)
+                # self.construct_slice_pass(file_list,None,self.row,None)
+
+            # self.dsets_to_read = list(total_dsets_to_read)
 
         # Rationalise the satellite name...
-        #satellite_names = {'NN': u'NOAA-15',
-                           #'NP': u'NOAA-16',
-                           #'M2': u'Metop-A',
-                           #'M1': u'Metop-B'}
+        satellite_names = {b'Aqua': u'Aqua',
+                           b'METOP-A': u'Metop-A',
+                           b'NPP': u'NPP'}
         for filename in self.datasets['file_attrs'].keys():
-            self.datasets['file_attrs'][filename]['Satellite_Name'] = "NOAA-Blah"
-            #satellite_name = self.datasets['file_attrs'][filename]['Satellite_Name']
-            #self.datasets['file_attrs'][filename]['Satellite_Name'] = satellite_names[satellite_name]
+            satellite_name = self.datasets['file_attrs'][filename]['Mission_Name']
+            self.datasets['file_attrs'][filename]['Satellite_Name'] = satellite_names[satellite_name]
 
         LOG.debug("\n\n>>> Final dataset manifest...\n")
         LOG.debug(self.print_dataset_manifest(self))
@@ -362,7 +440,7 @@ class MIRS(Sounder_Packages):
                 LOG.info("\tReading in granule {} : {}".format(grans,os.path.basename(file_name)))
 
                 #LOG.info("\tOpening file {}".format(file_name))
-                dfile_obj = Datafile_NetCDF(file_name)
+                dfile_obj = Datafile_HDF5(file_name)
                 self.datasets['file_attrs'][os.path.basename(file_name)] \
                         = dfile_obj.attrs
                 self.datasets['file_attrs'][os.path.basename(file_name)]['dt_obj'] \
@@ -415,7 +493,7 @@ class MIRS(Sounder_Packages):
 
                         LOG.info("\t\tsubsequent arrays...")
 
-                    except KeyError,err :
+                    except KeyError as err :
 
                         LOG.info("\t\tFirst arrays...")
                         LOG.info("\t\tCreating new data array for {}".format(dset))
@@ -433,7 +511,7 @@ class MIRS(Sounder_Packages):
                 #LOG.info("\tClosing file {}".format(file_name))
                 dfile_obj.close()
 
-            except Exception, err :
+            except Exception as err :
                 LOG.warn("\tThere was a problem, closing {}".format(file_name))
                 LOG.warn("\t{}".format(err))
                 LOG.debug(traceback.format_exc())
@@ -456,7 +534,7 @@ class MIRS(Sounder_Packages):
 
         LOG.info("\tContructing a SLICE pass...")
         #LOG.debug("\tInput file list: {}".format(file_list))
-        LOG.debug("\t(row,col,level)  = ({}, {}, {})".format(row,col,level))
+        LOG.debug("\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
 
         first_granule = True
         self.datasets['file_attrs'] = {}
@@ -477,7 +555,7 @@ class MIRS(Sounder_Packages):
                 LOG.info("\tReading in granule {} : {}".format(grans,os.path.basename(file_name)))
 
                 #LOG.info("\tOpening file {}".format(file_name))
-                dfile_obj = Datafile_NetCDF(file_name)
+                dfile_obj = Datafile_HDF5(file_name)
                 self.datasets['file_attrs'][os.path.basename(file_name)] \
                         = dfile_obj.attrs
                 self.datasets['file_attrs'][os.path.basename(file_name)]['dt_obj'] \
@@ -500,8 +578,7 @@ class MIRS(Sounder_Packages):
 
                     data = get_data(dfile_obj,dset,level,row,col,
                             this_granule_data,this_granule_mask)
-                    # Transpose to make the "level" dimension first, like HSRTV, for slice datasets
-                    this_granule_data[dset] = data.transpose()
+                    this_granule_data[dset] = data
 
                     LOG.info("\t\tthis_granule_data['{}'].shape = {}".format(
                         dset,this_granule_data[dset].shape))
@@ -531,7 +608,7 @@ class MIRS(Sounder_Packages):
 
                         LOG.info("\t\tsubsequent arrays...")
 
-                    except KeyError,err :
+                    except KeyError as err :
 
                         LOG.info("\t\tFirst arrays...")
                         LOG.info("\t\tCreating new data array for {}".format(dset))
@@ -549,7 +626,7 @@ class MIRS(Sounder_Packages):
                 #LOG.info("\tClosing file {}".format(file_name))
                 dfile_obj.close()
 
-            except Exception, err :
+            except Exception as err :
                 LOG.warn("\tThere was a problem, closing {}".format(file_name))
                 LOG.warn("\t{}".format(err))
                 LOG.debug(traceback.format_exc())
@@ -557,8 +634,6 @@ class MIRS(Sounder_Packages):
                 dfile_obj.close()
                 LOG.info("\tExiting...")
                 sys.exit(1)
-
-        #sys.exit(0)
 
     def construct_level_pass(self,file_list,level,elev_idx,row,col):
         '''
@@ -594,7 +669,7 @@ class MIRS(Sounder_Packages):
                 LOG.info("\tReading in granule {} : {}".format(grans,os.path.basename(file_name)))
 
                 #LOG.info("\tOpening file {}".format(file_name))
-                dfile_obj = Datafile_NetCDF(file_name)
+                dfile_obj = Datafile_HDF5(file_name)
                 self.datasets['file_attrs'][os.path.basename(file_name)] \
                         = dfile_obj.attrs
                 self.datasets['file_attrs'][os.path.basename(file_name)]['dt_obj'] \
@@ -647,7 +722,7 @@ class MIRS(Sounder_Packages):
 
                         LOG.info("\t\tsubsequent arrays...")
 
-                    except KeyError,err :
+                    except KeyError as err :
 
                         LOG.info("\t\tFirst arrays...")
                         LOG.info("\t\tCreating new data array for {}".format(dset))
@@ -665,7 +740,7 @@ class MIRS(Sounder_Packages):
                 #LOG.info("\tClosing file {}".format(file_name))
                 dfile_obj.close()
 
-            except Exception, err :
+            except Exception as err :
                 LOG.warn("\tThere was a problem, closing {}".format(file_name))
                 LOG.warn("\t{}".format(err))
                 LOG.debug(traceback.format_exc())
@@ -681,21 +756,36 @@ class MIRS(Sounder_Packages):
         a single array (which may be a surface/top, pressure level, or slice dataset.
         '''
 
-        LOG.info("\t\t(row,col,level)  = ({}, {}, {})".format(row,col,level))
+        LOG.info("\t\tRetrieving {}".format(data_name))
+
+        # The dataset dimensions from the file dimension block.
+        nrows = self.dimensions['nrows']
+        ncols = self.dimensions['ncols']
+        nlevels = self.dimensions['nlevels']
+        LOG.info("\t\t(nlevels,nrows,ncols)  = ({}, {}, {})".format(nlevels,nrows,ncols))
+
+        LOG.info("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
 
         level = slice(level) if level == None else level
         row = slice(row) if row == None else row
         col = slice(col) if col == None else col
 
-        data_obj = dfile_obj.Dataset(dfile_obj,dset_name[data_name])
-        LOG.info("\t\tdset.shape(row,col,level) = {}".format(data_obj.dset.shape))
+        LOG.info("\t\t(level,row,col) slice objects = ({}, {}, {})".format(level,row,col))
 
+        LOG.info("\t\tplot type is {}".format(self.plot_type))
+
+        # Get a reference to the dataset object...
+        data_obj = dfile_obj.Dataset(dfile_obj,dset_name[data_name])
+        LOG.info("\t\tdata_obj.dset.shape = {}".format(data_obj.dset.shape))
+
+        # Determine whether this is a single pressure level (i.e.: ctp) or a profile dataset, and 
+        # get the correct array slice of the dataset array...
         if dset_type[data_name] == 'single':
             LOG.info("\t\tgetting a 'single' dataset...")
             dset = data_obj.dset[row,col].squeeze()
         elif dset_type[data_name] == 'level':
             LOG.info("\t\tgetting a 'level' dataset...")
-            dset = data_obj.dset[row,col,level].squeeze()
+            dset = data_obj.dset[level,row,col].squeeze()
 
         LOG.info("\t\tDataset {} has shape {}".format(data_name,dset.shape))
 
@@ -709,17 +799,28 @@ class MIRS(Sounder_Packages):
         pressure level, or a vertical slice.
         '''
 
+        LOG.info("\t\tComputing {}".format(data_name))
+
+        # The dataset dimensions from the file dimension block.
+        nrows = self.dimensions['nrows']
+        ncols = self.dimensions['ncols']
+        nlevels = self.dimensions['nlevels']
+        LOG.info("\t\t(nlevels,nrows,ncols)  = ({}, {}, {})".format(nlevels,nrows,ncols))
+
         LOG.info("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
 
         level = slice(level) if level == None else level
         row = slice(row) if row == None else row
         col = slice(col) if col == None else col
 
-        LOG.info("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
-
-        LOG.info("\t\tComputing {}".format(data_name))
+        LOG.info("\t\t(level,row,col) has slice objects = ({}, {}, {})".format(level,row,col))
 
         LOG.info("\t\trelh_gdas has shape {}".format(this_granule_data['relh_gdas'].shape))
+
+        LOG.info("\t\tplot type is {}".format(self.plot_type))
+
+        self.pressure_array = np.broadcast_to(np.broadcast_to(self.pressure,(nrows,nlevels)),(ncols,nrows,nlevels)).T
+        LOG.info("\t\tpressure_array.shape = {}".format(self.pressure_array.shape))
 
         # Determine whether this is an level or slice, and determine the size
         # of the relh_gdas array...
@@ -740,9 +841,6 @@ class MIRS(Sounder_Packages):
         nrows = this_granule_data['relh_gdas'].shape[0]
         ncols = this_granule_data['relh_gdas'].shape[1]
         LOG.info("\t\t(nlevels,nrows,ncols)  = ({}, {}, {})".format(nlevels,nrows,ncols))
-        self.pressure_array = np.broadcast_to(np.broadcast_to(self.pressure,(nrows,nlevels)),(ncols,nrows,nlevels)).T
-
-        LOG.info("\t\tpressure_array.shape = {}".format(self.pressure_array.shape))
 
         LOG.info("\t\tgetting a 'level' dataset...")
         dset = self.pressure_array[level,row,col].squeeze()
@@ -793,6 +891,44 @@ class MIRS(Sounder_Packages):
 
         return dset
 
+
+    def wvap_gdas(self,dfile_obj,data_name,level,row,col,this_granule_data,this_granule_mask):
+        '''
+        Custom method to return the water vapor mixing ratio.
+        '''
+
+        LOG.info("\t\t(level,row,col)  = ({}, {}, {})".format(level,row,col))
+
+        level = slice(level) if level == None else level
+        row = slice(row) if row == None else row
+        col = slice(col) if col == None else col
+
+        LOG.info("\t\tComputing {}".format(data_name))
+        dset_mask = this_granule_mask['temp_gdas'] + this_granule_mask['relh_gdas']
+
+        pressure  = this_granule_data['pres_array'][:,:].squeeze()
+        temp_gdas = this_granule_data['temp_gdas'][:,:].squeeze()
+        relh_gdas = this_granule_data['relh_gdas'][:,:].squeeze()
+
+        LOG.info("\t\tpressure  has shape {}".format(pressure.shape))
+        LOG.info("\t\tGDAS Temp has shape {}".format(this_granule_data['temp_gdas'].shape))
+        LOG.info("\t\tGDAS RH   has shape {}".format(this_granule_data['relh_gdas'].shape))
+
+        # Get the pressure
+        #slice_length = temp_gdas.shape[1]
+        #pressure_row = slice(0,slice_length)
+        #pressure = self.pressure_array[level,pressure_row,col].squeeze()
+        #LOG.info("\t\tNew pressure  has shape {}".format(pressure.shape))
+
+        rh_to_mr_vec = np.vectorize(rh_to_mr)
+        dset = rh_to_mr_vec( relh_gdas, pressure, temp_gdas)
+
+        dset = ma.array(dset,mask=dset_mask)
+        self.datasets[data_name]['attrs'] = self.datasets['relh_gdas']['attrs']
+
+        return dset
+
+
     def temp_times_two(self,dfile_obj,data_name,level,row,col,this_granule_data,this_granule_mask):
         '''
         Custom method to compute two times the temperature.
@@ -803,6 +939,7 @@ class MIRS(Sounder_Packages):
         self.datasets[data_name]['attrs'] =  self.datasets['temp']['attrs']
 
         return dset
+
 
     def print_dataset_manifest(self,pkg_obj):
         dataset_names = list(pkg_obj.datasets.keys())
@@ -815,7 +952,67 @@ class MIRS(Sounder_Packages):
                     key,pkg_obj.datasets[key]['attrs']))
             LOG.debug("\tdatasets['{}']['data'].shape = {}".format(
                     key,pkg_obj.datasets[key]['data'].shape))
-        print ""
+        print("")
+
+    def get_data_old(self,data_file,data_name,level):
+
+        # Contruct the pressure array
+        pressure_array = pressure[level] * \
+                np.ones(sounding_inputs['lat']['data'].shape,dtype='float')
+        LOG.debug("pressure_array.shape =  {}".format(pressure_array.shape))
+
+        # Construct the masks of the various datasets
+        for label in ['temp','dwpt','wvap','relh','ctp','ctt','lat','lon']:
+            if sounding_inputs[label] != None:
+                LOG.debug(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
+                fill_value = float(sounding_inputs[label]['missing_value'][0])
+                data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
+                LOG.debug("ma.is_masked({}) = {}".format(label,ma.is_masked(data)))
+
+                if ma.is_masked(data):
+                    if data.mask.shape == ():
+                        data_mask = np.ones(data.shape,dtype='bool')
+                    else:
+                        data_mask = data.mask
+                else:
+                    data_mask = np.zeros(data.shape,dtype='bool')
+
+                LOG.debug("There are {}/{} masked values in {}".\
+                        format(np.sum(data_mask),data.size,label))
+
+                sounding_inputs[label]['mask'] = data_mask
+
+        calc_relh = False
+        #calc_relh = True
+
+        if calc_relh:
+            # Computing the relative humidity
+            sounding_inputs['relh'] = {}
+            LOG.debug("wvap.shape =  {}".format(sounding_inputs['wvap']['data'].shape))
+            LOG.debug("temp.shape =  {}".format(sounding_inputs['temp']['data'].shape))
+
+            relh_mask = sounding_inputs['wvap']['mask']+sounding_inputs['temp']['mask']
+
+            wvap = ma.array(sounding_inputs['wvap']['data'],mask=relh_mask)
+            temp = ma.array(sounding_inputs['temp']['data'],mask=relh_mask)
+            pressure_array = ma.array(pressure_array,mask=relh_mask)
+
+            dewhum_vec = np.vectorize(dewhum)
+            _,rh,_ = dewhum_vec(pressure_array,temp,wvap)
+
+            # Copy relative humidity to output
+            sounding_inputs['relh']['data'] = rh
+            sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
+                    else np.zeros(temp.shape,dtype='bool')
+            sounding_inputs['relh']['units'] = '%'
+            sounding_inputs['relh']['long_name'] = 'Relative Humidity'
+
+            LOG.debug("ma.is_masked({}) = {}".format('relh',ma.is_masked(rh)))
+            LOG.debug("There are {}/{} masked values in relh".format(np.sum(rh.mask),rh.size))
+
+
+        return sounding_inputs
+
 
     def get_dset_deps(self,dset):
         '''
@@ -834,11 +1031,12 @@ class MIRS(Sounder_Packages):
         '''
         Computes a datetime object based on the filename.
         This assumes a filename for HSRTV output like...
-            "metopa_L2_d20150330_t1510413_e1516077_c20150330152548432117_iapp.nc"
+            "IASI_d20150331_t153700_M01.atm_prof_rtv.h5"
         '''
         file_name = os.path.basename(file_name)
-        image_date_time = "_".join(file_name.split(".")[2:4])
-        dt_image_date = datetime.strptime(image_date_time,'D%y%j_S%H%M')
+        image_date_time = "_".join(file_name.split("_")[1:3])
+        image_date_time = image_date_time.split(".")[0]
+        dt_image_date = datetime.strptime(image_date_time,'d%Y%m%d_t%H%M%S')
         return dt_image_date
 
 
@@ -1032,7 +1230,6 @@ def get_elevation(pressure,temp,relh):
     computes the elevation for each element of the cube.
     '''
 
-
     np.set_printoptions(precision=3)
     cube_mask = np.zeros(pressure.shape,dtype='bool')
 
@@ -1063,11 +1260,13 @@ def get_elevation(pressure,temp,relh):
                         wvap[:,row,col],
                         z_sfc=0.
                         )
-            except Exception, err :
+            except Exception as err :
                 #LOG.debug("([:,{},{}]): {}".format(row,col,err))
                 #LOG.debug(traceback.format_exc())
                 #LOG.warn("elevation[:,{},{}] failed".format(row,col))
                 elevation[:,row,col] = -9999.
+
+    LOG.debug("\nelevation[{}] = \n{}\n".format(level,wvap[level]))
 
     return elevation
 
@@ -1115,7 +1314,7 @@ def get_level_indices(data,match_val):
                 # Assign the index of the minimum residual for this row/col
                 data_level_idx[row,col] = data_profile_min_idx
 
-            except Exception, err :
+            except Exception as err :
                 #LOG.debug("([:,{},{}]): {}".format(row,col,err))
                 #LOG.debug("([:,{},{}]): Setting as fill value.".format(row,col))
                 data_level_idx[row,col] = -9999
@@ -1146,575 +1345,3 @@ def get_level_indices(data,match_val):
     return cube_idx
 
 
-
-def sounder(iapp_file_list, pres_0=850.):
-
-    data_labels = [
-                    'pres',
-                    'temp',
-                    'dwpt',
-                    'wvap',
-                    'relh',
-                    'ctp',
-                    'ctt',
-                    'lat',
-                    'lon'
-                    ]
-
-    sounding_inputs = {}
-    for label in data_labels:
-        sounding_inputs[label] = {}
-
-    sounding_inputs['pres']['dset_name'] = 'Pressure_Levels'
-    sounding_inputs['temp']['dset_name'] = 'Temperature_Retrieval'
-    sounding_inputs['dwpt']['dset_name'] = 'Dew_Point_Temp_Retrieval'
-    sounding_inputs['wvap']['dset_name'] = 'WaterVapor_Retrieval'
-    sounding_inputs['ctp']['dset_name']  = 'Cloud_Top_Pressure_CO2'
-    sounding_inputs['ctt']['dset_name']  = 'Cloud_Top_Temperature_CO2'
-    sounding_inputs['lat']['dset_name']  = 'Latitude'
-    sounding_inputs['lon']['dset_name']  = 'Longitude'
-    sounding_inputs['relh'] = None
-
-    LOG.debug("Input file list: {}".format(iapp_file_list))
-
-    first_granule = True
-
-    for grans in np.arange(len(iapp_file_list)):
-
-        try:
-
-            LOG.debug("Ingesting granule {} ...".format(grans))
-
-            iapp_file = iapp_file_list[grans]
-            LOG.debug("Ingesting granule {} ...".format(iapp_file))
-
-            # Open the file object
-            fileObj = Dataset(iapp_file)
-
-            # Open the dataset nodes for each of the required datasets
-            sounding_inputs['pres']['node'] = fileObj.variables['Pressure_Levels']
-            sounding_inputs['temp']['node'] = fileObj.variables['Temperature_Retrieval']
-            sounding_inputs['dwpt']['node'] = fileObj.variables['Dew_Point_Temp_Retrieval']
-            sounding_inputs['wvap']['node'] = fileObj.variables['WaterVapor_Retrieval']
-            sounding_inputs['ctp']['node'] = fileObj.variables['Cloud_Top_Pressure_CO2']
-            sounding_inputs['ctt']['node'] = fileObj.variables['Cloud_Top_Temperature_CO2']
-            sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
-            sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
-
-            if first_granule:
-
-                # Get the pressure scale
-                pressure = sounding_inputs['pres']['node'][:]
-
-                for label in data_labels:
-                    if sounding_inputs[label] != None:
-                        LOG.info(">>> Processing {} ..."
-                                .format(sounding_inputs[label]['dset_name']))
-                        for attr_name in sounding_inputs[label]['node'].ncattrs(): 
-                            attr = getattr(sounding_inputs[label]['node'],attr_name)
-                            LOG.debug("{} = {}".format(attr_name,attr))
-                            sounding_inputs[label][attr_name] = attr
-
-                # Search for the pressure level closest to the input value
-                pressure_scope = 10.
-                LOG.debug("Scope of pressure level search is {} hPa"
-                        .format(pressure_scope))
-                level = get_pressure_index(pressure,pres_0=pres_0,
-                        kd_dist=pressure_scope)
-                attempts = 1
-                while (level==None and attempts<10):
-                    pressure_scope *= 1.1
-                    LOG.debug("Scope of pressure level search is {} hPa"
-                            .format(pressure_scope))
-                    level = get_pressure_index(pressure,pres_0=pres_0,
-                            kd_dist=pressure_scope)
-                    attempts += 1
-
-                if level==None:
-                    raise Exception("No suitable pressure level found, aborting...")
-                     
-                LOG.debug("Retrieved level = {}".format(level))
-                sounding_inputs['pres_0'] = pressure[level]
-                data_labels.remove('pres')
-
-            # Add to the lat and lon and data arrays...
-            for label in ['lat','lon']:
-                try :
-                    sounding_inputs[label]['data']  = np.vstack((
-                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:]))
-                    LOG.debug("subsequent arrays...")
-                except KeyError :
-                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:]
-                    LOG.debug("first arrays...")
-
-                LOG.debug("Intermediate {} shape = {}".format(
-                    label,sounding_inputs[label]['data'].shape))
-
-            # Add to the ctp and   ctt and data arrays...
-            for label in ['ctp','ctt']:
-                try :
-                    sounding_inputs[label]['data']  = np.vstack((
-                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:,4]))
-                    LOG.debug("subsequent arrays...")
-                except KeyError :
-                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:,4]
-                    LOG.debug("first arrays...")
-
-                LOG.debug("Intermediate {} shape = {}".format(
-                    label,sounding_inputs[label]['data'].shape))
-
-            # Add to the temp, dewpoint, water vapour and relative humidity data arrays...
-            for label in ['temp','dwpt','wvap']:
-                try :
-                    sounding_inputs[label]['data']  = np.vstack((
-                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:,level]))
-                    LOG.debug("subsequent arrays...")
-                except KeyError :
-                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:,level]
-                    LOG.debug("first arrays...")
-
-                LOG.debug("Intermediate {} shape = {}".format(
-                    label,sounding_inputs[label]['data'].shape))
-
-            first_granule = False
-
-            LOG.info("Closing {}".format(iapp_file))
-            fileObj.close()
-
-        except Exception, err :
-            LOG.warn("There was a problem, closing {}".format(iapp_file))
-            LOG.warn("{}".format(err))
-            LOG.debug(traceback.format_exc())
-            fileObj.close()
-            LOG.info("Exiting...")
-            sys.exit(1)
-
-    # Contruct the pressure array
-    pressure_array = pressure[level] * \
-            np.ones(sounding_inputs['lat']['data'].shape,dtype='float')
-    LOG.debug("pressure_array.shape =  {}".format(pressure_array.shape))
-    
-    # Construct the masks of the various datasets
-    for label in ['temp','dwpt','wvap','ctp','ctt','lat','lon']:
-        if sounding_inputs[label] != None:
-            LOG.debug(">>> Processing {} ..."
-                    .format(sounding_inputs[label]['dset_name']))
-            fill_value = sounding_inputs[label]['_FillValue']
-            #data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
-            data = ma.masked_equal(sounding_inputs[label]['data'],np.nan)
-            LOG.debug("ma.is_masked({}) = {}".format(label,ma.is_masked(data)))
-
-            if ma.is_masked(data):
-                if data.mask.shape == ():
-                    data_mask = np.ones(data.shape,dtype='bool')
-                else:
-                    data_mask = data.mask
-            else: 
-                data_mask = np.zeros(data.shape,dtype='bool')
-
-            LOG.debug("There are {}/{} masked values in {}".\
-                    format(np.sum(data_mask),data.size,label))
-
-            sounding_inputs[label]['mask'] = data_mask
-
-    # Computing the relative humidity
-    sounding_inputs['relh'] = {}
-    LOG.debug("wvap.shape =  {}".format(sounding_inputs['wvap']['data'].shape))
-    LOG.debug("temp.shape =  {}".format(sounding_inputs['temp']['data'].shape))
-
-    relh_mask = sounding_inputs['wvap']['mask']+sounding_inputs['temp']['mask']
-
-    wvap = ma.array(sounding_inputs['wvap']['data'],mask=relh_mask)
-    temp = ma.array(sounding_inputs['temp']['data'],mask=relh_mask)
-    pressure_array = ma.array(pressure_array,mask=relh_mask)
-
-    dewhum_vec = np.vectorize(dewhum)
-    _,rh,_ = dewhum_vec(pressure_array,temp,wvap)
-
-    sounding_inputs['relh']['data'] = rh
-    sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
-            else np.zeros(temp.shape,dtype='bool')
-    sounding_inputs['relh']['units'] = '%'
-    sounding_inputs['relh']['long_name'] = 'Relative Humidity'
-
-    LOG.debug("ma.is_masked({}) = {}".format('relh',ma.is_masked(rh)))
-    LOG.debug("There are {}/{} masked values in relh".format(np.sum(rh.mask),rh.size))
-
-    return sounding_inputs
-
-
-def sounder_skewT(iapp_file_list,lat_0=None,lon_0=None):
-    '''
-    Pressure_Levels: Pressure for each level in mb (hPa)
-    Temperature_Retrieval: Temperature profile in K
-    WaterVapor_Retrieval: Water vapor profile (mixing ratio) in g/kg
-    Dew_Point_Temp_Retrieval: Dew Point Temperature Profile in K
-    '''
-
-    '''
-    float Latitude(Along_Track, Across_Track) ;
-            Latitude:long_name = "Geodetic Latitude" ;
-            Latitude:units = "degrees_north" ;
-            Latitude:scale_factor = 1. ;
-            Latitude:add_offset = 0. ;
-            Latitude:Parameter_Type = "IAPP Output" ;
-            Latitude:valid_range = -90.f, 90.f ;
-            Latitude:_FillValue = -999.f ;
-
-    float Longitude(Along_Track, Across_Track) ;
-            Longitude:long_name = "Geodetic Longitude" ;
-            Longitude:units = "degrees_east" ;
-
-    float Pressure_Levels(Pres_Levels) ;
-            Pressure_Levels:long_name = "Pressure Levels at which the retrieved 
-                                         values are calculated" ;
-            Pressure_Levels:units = "hPa" ;
-
-    float Temperature_Retrieval(Along_Track, Across_Track, Pres_Levels) ;
-            Temperature_Retrieval:long_name = "Temperature Retrieval for 
-                                               the IAPP" ;
-            Temperature_Retrieval:units = "degrees Kelvin" ;
-
-    float WaterVapor_Retrieval(Along_Track, Across_Track, Pres_Levels) ;
-            WaterVapor_Retrieval:long_name = "Water Vapor Retrieval for 
-                                             the IAPP" ;
-            WaterVapor_Retrieval:units = "g/kg" ;
-
-    float Dew_Point_Temp_Retrieval(Along_Track, Across_Track, Pres_Levels) ;
-            Dew_Point_Temp_Retrieval:long_name = "Dew Point Temperature Retrieval 
-                                                  for the IAPP" ;
-            Dew_Point_Temp_Retrieval:units = "degrees Kelvin" ;                
-    '''
-
-    data_labels = [
-                    'pres',
-                    'temp',
-                    'dwpt',
-                    'wvap',
-                    'relh',
-                    'lat',
-                    'lon'
-                    ]
-
-    sounding_inputs = {}
-    for label in data_labels:
-        sounding_inputs[label] = {}
-
-    sounding_inputs['pres']['dset_name'] = 'Pressure_Levels'
-    sounding_inputs['temp']['dset_name'] = 'Temperature_Retrieval'
-    sounding_inputs['dwpt']['dset_name'] = 'Dew_Point_Temp_Retrieval'
-    sounding_inputs['wvap']['dset_name'] = 'WaterVapor_Retrieval'
-    sounding_inputs['lat']['dset_name']  = 'Latitude'
-    sounding_inputs['lon']['dset_name']  = 'Longitude'
-    sounding_inputs['relh'] = None
-
-    LOG.debug("Input file list: {}".format(iapp_file_list))
-
-    iapp_file = iapp_file_list[0]
-
-    # Open the file object
-    fileObj = Dataset(iapp_file)
-
-    try:
-
-        sounding_inputs['pres']['node'] = fileObj.variables['Pressure_Levels']
-        sounding_inputs['temp']['node'] = fileObj.variables['Temperature_Retrieval']
-        sounding_inputs['dwpt']['node'] = fileObj.variables['Dew_Point_Temp_Retrieval']
-        sounding_inputs['wvap']['node'] = fileObj.variables['WaterVapor_Retrieval']
-        sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
-        sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
-
-        lat = sounding_inputs['lat']['node'][:,:]
-        lon = sounding_inputs['lon']['node'][:,:]
-
-        for label in data_labels:
-            if sounding_inputs[label] != None:
-                LOG.info(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
-                for attr_name in sounding_inputs[label]['node'].ncattrs(): 
-                    attr = getattr(sounding_inputs[label]['node'],attr_name)
-                    LOG.debug("{} = {}".format(attr_name,attr))
-                    sounding_inputs[label][attr_name] = attr
-
-        row,col = get_geo_indices(lat,lon,lat_0=lat_0,lon_0=lon_0)
-
-        if row==None or col==None:
-            raise Exception("No suitable lat/lon coordinates found, aborting...")
-             
-        LOG.debug("Retrieved row,col = {},{}".format(row,col))
-        sounding_inputs['lat_0'] = lat[row,col]
-        sounding_inputs['lon_0'] = lon[row,col]
-        #row,col = 10,10
-
-        sounding_inputs['pres']['data'] = sounding_inputs['pres']['node'][:]
-
-        sounding_inputs['temp']['data'] = sounding_inputs['temp']['node'][row,col,:]
-        sounding_inputs['dwpt']['data'] = sounding_inputs['dwpt']['node'][row,col,:]
-        sounding_inputs['wvap']['data'] = sounding_inputs['wvap']['node'][row,col,:]
-
-        LOG.info("Closing {}".format(iapp_file))
-        fileObj.close()
-
-    except Exception, err :
-        LOG.warn("There was a problem, closing {}".format(iapp_file))
-        LOG.warn("{}".format(err))
-        LOG.debug(traceback.format_exc())
-        fileObj.close()
-        LOG.info("Exiting...")
-        sys.exit(1)
-
-    # Construct the masks of the various datasets, and mask the data accordingly
-    for label in ['temp','dwpt','wvap']:
-        if sounding_inputs[label] != None:
-            LOG.debug(">>> Processing {} ..."
-                    .format(sounding_inputs[label]['dset_name']))
-            fill_value = sounding_inputs[label]['_FillValue']
-            data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
-            LOG.debug("ma.is_masked({}) = {}".format(label,ma.is_masked(data)))
-
-            if ma.is_masked(data):
-                if data.mask.shape == ():
-                    data_mask = np.ones(data.shape,dtype='bool')
-                else:
-                    data_mask = data.mask
-            else: 
-                data_mask = np.zeros(data.shape,dtype='bool')
-
-            LOG.debug("There are {}/{} masked values in {}".\
-                    format(np.sum(data_mask),data.size,label))
-
-            sounding_inputs[label]['mask'] = data_mask
-            sounding_inputs[label]['data'] = ma.array(data,mask=data_mask)
-
-    # Computing the relative humidity
-    sounding_inputs['relh'] = {}
-    dewhum_vec = np.vectorize(dewhum)
-    _,rh,_ = dewhum_vec(
-            sounding_inputs['pres']['data'],
-            sounding_inputs['temp']['data'],
-            sounding_inputs['wvap']['data']
-            )
-
-    sounding_inputs['relh']['data'] = rh
-    sounding_inputs['relh']['units'] = '%'
-    sounding_inputs['relh']['long_name'] = 'Relative Humidity'
-
-    return sounding_inputs
-
-
-
-
-def sounder(mirs_file_list,pres_0=850.):
-    '''
-    Player: Pressure for each layer in mb (hPa)
-    PTemp: Temperature profile in K
-    PVapor: Water vapor profile (mixing ratio) in g/kg
-    '''
-
-    '''
-    float Latitude(Scanline, Field_of_view) ;
-            Latitude:long_name = "Latitude of the view (-90,90)" ;
-            
-    float Longitude(Scanline,Field_of_view) ;
-            Longitude:long_name = "Longitude of the view (-180,180)" ;
-
-    float Player(P_Layer) ;
-            Player:description = "Pressure for each layer in mb" ;
-
-    float PTemp(Scanline, Field_of_view, P_Layer) ;
-            PTemp:long_name = "Temperature profile in K" ;
-            PTemp:scale = 1. ;
-
-    float PVapor(Scanline, Field_of_view, P_Layer) ;
-            PVapor:long_name = "Water vapor profile in g/kg" ;
-            PVapor:scale = 1. ;
-    '''         
-
-    data_labels = [
-                    'pres',
-                    'temp',
-                    'dwpt',
-                    'wvap',
-                    'relh',
-                    'lat',
-                    'lon'
-                    ]
-
-    sounding_inputs = {}
-    for label in data_labels:
-        sounding_inputs[label] = {}
-
-    sounding_inputs['pres']['dset_name'] = 'Player'
-    sounding_inputs['temp']['dset_name'] = 'PTemp'
-    sounding_inputs['wvap']['dset_name'] = 'PVapor'
-    sounding_inputs['lat']['dset_name']  = 'Latitude'
-    sounding_inputs['lon']['dset_name']  = 'Longitude'
-    sounding_inputs['dwpt'] = None
-    sounding_inputs['relh'] = None
-
-    LOG.debug("Input file list: {}".format(mirs_file_list))
-
-    first_granule = True
-
-    for grans in np.arange(len(mirs_file_list)):
-
-        try:
-
-            LOG.debug("Ingesting granule {} ...".format(grans))
-
-            mirs_file = mirs_file_list[grans]
-            LOG.debug("Ingesting granule {} ...".format(mirs_file))
-
-            # Open the file object
-            fileObj = Dataset(mirs_file)
-
-            sounding_inputs['pres']['node'] = fileObj.variables['Player']
-            sounding_inputs['temp']['node'] = fileObj.variables['PTemp']
-            sounding_inputs['wvap']['node'] = fileObj.variables['PVapor']
-            sounding_inputs['lat']['node'] = fileObj.variables['Latitude']
-            sounding_inputs['lon']['node'] = fileObj.variables['Longitude']
-
-            # Fill in some missing attributes
-            fill_value = getattr(fileObj,'missing_value')
-            sounding_inputs['pres']['units'] = 'hPa'
-            sounding_inputs['temp']['units'] = 'K'
-            sounding_inputs['wvap']['units'] = 'g/kg'
-
-            if first_granule:
-
-                # Get the pressure scale
-                pressure = sounding_inputs['pres']['node'][:]
-
-                for label in data_labels:
-                    if sounding_inputs[label] != None:
-                        LOG.info(">>> Processing {} ..."
-                                .format(sounding_inputs[label]['dset_name']))
-                        sounding_inputs[label]['_FillValue'] = fill_value
-                        for attr_name in sounding_inputs[label]['node'].ncattrs(): 
-                            attr = getattr(sounding_inputs[label]['node'],attr_name)
-                            LOG.debug("{} = {}".format(attr_name,attr))
-                            sounding_inputs[label][attr_name] = attr
-
-                # Search for the pressure level closest to the input value
-                pressure_scope = 10.
-                LOG.debug("Scope of pressure level search is {} hPa"
-                        .format(pressure_scope))
-                level = get_pressure_index(pressure,pres_0=pres_0,
-                        kd_dist=pressure_scope)
-                attempts = 1
-                while (level==None and attempts<10):
-                    pressure_scope *= 1.1
-                    LOG.debug("Scope of pressure level search is {} hPa"
-                            .format(pressure_scope))
-                    level = get_pressure_index(pressure,pres_0=pres_0,
-                            kd_dist=pressure_scope)
-                    attempts += 1
-
-                if level==None:
-                    raise Exception("No suitable pressure level found, aborting...")
-                     
-                LOG.debug("Retrieved level = {}".format(level))
-                sounding_inputs['pres_0'] = pressure[level]
-                data_labels.remove('pres')
-
-            # Add to the lat and lon and data arrays...
-            for label in ['lat','lon']:
-                try :
-                    sounding_inputs[label]['data']  = np.vstack((
-                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:]))
-                    LOG.debug("subsequent arrays...")
-                except KeyError :
-                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:]
-                    LOG.debug("first arrays...")
-
-                LOG.debug("Intermediate {} shape = {}".format(
-                    label,sounding_inputs[label]['data'].shape))
-
-            # Add to the temp, dewpoint, water vapour and relative humidity data arrays...
-            for label in ['temp','wvap']:
-                try :
-                    sounding_inputs[label]['data']  = np.vstack((
-                        sounding_inputs[label]['data'],sounding_inputs[label]['node'][:,:,level]))
-                    LOG.debug("subsequent arrays...")
-                except KeyError :
-                    sounding_inputs[label]['data']  = sounding_inputs[label]['node'][:,:,level]
-                    LOG.debug("first arrays...")
-
-                LOG.debug("Intermediate {} shape = {}".format(
-                    label,sounding_inputs[label]['data'].shape))
-
-            first_granule = False
-
-            LOG.info("Closing {}".format(mirs_file))
-            fileObj.close()
-
-        except Exception, err :
-            LOG.warn("There was a problem, closing {}".format(mirs_file))
-            LOG.warn("{}".format(err))
-            LOG.debug(traceback.format_exc())
-            fileObj.close()
-            LOG.info("Exiting...")
-            sys.exit(1)
-
-    # Contruct the pressure array
-    pressure_array = pressure[level] * \
-            np.ones(sounding_inputs['lat']['data'].shape,dtype='float')
-    LOG.debug("pressure_array.shape =  {}".format(pressure_array.shape))
-
-    # Construct the masks of the various datasets
-    for label in ['temp','wvap','lat','lon']:
-        if sounding_inputs[label] != None:
-            LOG.debug(">>> Processing {} ..."
-                    .format(sounding_inputs[label]['dset_name']))
-            data = ma.masked_equal(sounding_inputs[label]['data'],fill_value)
-            LOG.debug("ma.is_masked({}) = {}".format(label,ma.is_masked(data)))
-
-            if ma.is_masked(data):
-                if data.mask.shape == ():
-                    data_mask = np.ones(data.shape,dtype='bool')
-                else:
-                    data_mask = data.mask
-            else: 
-                data_mask = np.zeros(data.shape,dtype='bool')
-
-            LOG.debug("There are {}/{} masked values in {}".\
-                    format(np.sum(data_mask),data.size,label))
-
-            sounding_inputs[label]['mask'] = data_mask
-
-    # Computing the dewpoint temperature and relative humidity
-    sounding_inputs['dwpt'] = {}
-    sounding_inputs['relh'] = {}
-    LOG.debug("wvap.shape =  {}".format(sounding_inputs['wvap']['data'].shape))
-    LOG.debug("temp.shape =  {}".format(sounding_inputs['temp']['data'].shape))
-
-    dwpt_mask = sounding_inputs['wvap']['mask']+sounding_inputs['temp']['mask']
-    relh_mask = sounding_inputs['wvap']['mask']+sounding_inputs['temp']['mask']
-
-    wvap = ma.array(sounding_inputs['wvap']['data'],mask=dwpt_mask)
-    temp = ma.array(sounding_inputs['temp']['data'],mask=relh_mask)
-    pressure_array = ma.array(pressure_array,mask=relh_mask)
-
-    dewhum_vec = np.vectorize(dewhum)
-    dwpt,rh,_ = dewhum_vec(pressure_array,temp,wvap)
-
-    # Copy dewpoint temperature to output
-    sounding_inputs['dwpt']['data'] = dwpt
-    sounding_inputs['dwpt']['mask'] = dwpt.mask if  ma.is_masked(dwpt) \
-            else np.zeros(dwpt.shape,dtype='bool')
-    sounding_inputs['dwpt']['units'] = 'K'
-    sounding_inputs['dwpt']['long_name'] = 'Dew-point Temperature in K'
-
-    LOG.debug("ma.is_masked({}) = {}".format('dwpt',ma.is_masked(dwpt)))
-    LOG.debug("There are {} masked values in dwpt".format(np.sum(dwpt.mask)))
-
-    # Copy relative humidity to output
-    sounding_inputs['relh']['data'] = rh
-    sounding_inputs['relh']['mask'] = rh.mask if  ma.is_masked(rh) \
-            else np.zeros(rh.shape,dtype='bool')
-    sounding_inputs['relh']['units'] = '%'
-    sounding_inputs['relh']['long_name'] = 'Relative Humidity'
-
-    LOG.debug("ma.is_masked({}) = {}".format('relh',ma.is_masked(rh)))
-    LOG.debug("There are {}/{} masked values in relh".format(np.sum(rh.mask),rh.size))
-
-    return sounding_inputs
