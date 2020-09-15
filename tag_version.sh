@@ -68,7 +68,7 @@ else
     exit 1
 fi
 
-git tag -a 'cspp-gaasp-'$VERSION_TAG -m "Release $VERSION_TAG"
+git tag -a 'cspp-sounder-ql-'$VERSION_TAG -m "Release $VERSION_TAG"
 
 if [ $? -eq 0 ] ;
 then
