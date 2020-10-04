@@ -55,7 +55,7 @@ class Dataset_Options:
                 'quantity':'temperature',
                 'level':True,
                 'discrete':False,
-                'values':[170.,280.],
+                'values':[200., 280.],
                 'mask_ranges':[0.,173.16],
                 'logscale':False,
                 'units': 'K',

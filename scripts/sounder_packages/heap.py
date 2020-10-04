@@ -254,7 +254,7 @@ class Heap(Sounder_Packages):
         dfile_obj = Datafile_NetCDF(file_list[0])
         data_obj = dfile_obj.Dataset(dfile_obj,dset_name['pres'])
         self.pressure = data_obj.dset[:]
-        LOG.info(f"self.pressure.shape = {self.pressure.shape}")
+        LOG.debug(f"self.pressure.shape = {self.pressure.shape}")
 
         for key in dimension_name:
             found_dim = False
@@ -323,8 +323,6 @@ class Heap(Sounder_Packages):
                 # self.construct_level_pass(file_list,None,cube_idx,None,None)
             # else:
             if True:
-                LOG.info(f"self.pressure = {self.pressure}")
-                LOG.info(f"self.pressure.shape = {self.pressure.shape}")
                 # Determine the level closest to the required pressure
                 self.level,self.pres_0 = get_pressure_level(self.pressure,pres_0)
                 # Contruct a pass of the required datasets at the desired pressure.

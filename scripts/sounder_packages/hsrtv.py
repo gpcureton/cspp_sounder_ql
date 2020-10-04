@@ -234,7 +234,7 @@ class Hsrtv(Sounder_Packages):
         dfile_obj = Datafile_HDF5(file_list[0])
         data_obj = dfile_obj.Dataset(dfile_obj,dset_name['pres'])
         self.pressure = data_obj.dset[:]
-        LOG.info(f"self.pressure.shape = {self.pressure.shape}")
+        LOG.debug(f"self.pressure.shape = {self.pressure.shape}")
 
         LOG.debug(f"{dfile_obj.attrs.items()}")
         LOG.debug(f"Along_Track_Y = {dfile_obj.attrs['Along_Track_Y']}")

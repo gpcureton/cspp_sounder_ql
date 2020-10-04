@@ -152,8 +152,8 @@ def main():
     sounder_package_ref = sounder_packages.sounder_package_ref[datatype]
     sounder_obj = sounder_package_ref(*sounder_args,**sounder_kwargs)
 
-    LOG.info("sounder_obj.pres_0 = {}".format(sounder_obj.pres_0))
-    # LOG.info("sounder_obj.elev_0 = {}".format(sounder_obj.elev_0))
+    LOG.debug("sounder_obj.pres_0 = {}".format(sounder_obj.pres_0))
+    # LOG.debug("sounder_obj.elev_0 = {}".format(sounder_obj.elev_0))
 
     pres_0 = sounder_obj.pres_0
     # elev_0 = sounder_obj.elev_0

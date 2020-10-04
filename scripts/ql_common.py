@@ -41,10 +41,10 @@ import scipy.spatial as ss
 
 import matplotlib
 import matplotlib.cm as cm
-from matplotlib.colors import LogNorm
+from matplotlib.colors import Normalize, BoundaryNorm, LogNorm
+from matplotlib.ticker import LogLocator, LogFormatter
 from matplotlib.colors import ListedColormap
 from matplotlib.figure import Figure
-from matplotlib.ticker import LogLocator, LogFormatter
 # from matplotlib.mlab import griddata
 from scipy.interpolate import griddata
 
@@ -737,6 +737,8 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
     title         = plot_style_options['title']
     cbar_title    = plot_style_options['cbar_title']
     stride        = plot_style_options['stride']
+    dataset_min   = plot_style_options['dataset_min']
+    dataset_max   = plot_style_options['dataset_max']
     plotMin       = plot_style_options['plotMin']
     plotMax       = plot_style_options['plotMax']
     plotLims      = plot_style_options['plotLims']
@@ -751,7 +753,7 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
     plot_global   = plot_style_options['global']
     pointSize     = plot_style_options['pointSize']
     font_scale    = plot_style_options['font_scale']
-    log_plot      = plot_style_options['log_plot']
+    # log_plot      = plot_style_options['log_plot']
     dpi           = plot_style_options['dpi']
 
     '''
@@ -836,8 +838,8 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
     ax.add_feature(cfeature.LAND.with_scale(coast_res), facecolor='0.8', edgecolor=None, zorder=1)
     ax.add_feature(cfeature.OCEAN.with_scale(coast_res), facecolor='0.6', edgecolor=None, zorder=0)
 
-    LOG.info("data.shape = {}".format(data.shape))
-    LOG.info("data_mask.shape = {}".format(data_mask.shape))
+    LOG.debug("data.shape = {}".format(data.shape))
+    LOG.debug("data_mask.shape = {}".format(data_mask.shape))
 
     lat = ma.array(lat[::stride,::stride],mask=data_mask[::stride,::stride], fill_value=np.NaN)
     lon = ma.array(lon[::stride,::stride],mask=data_mask[::stride,::stride], fill_value=np.NaN)
@@ -847,30 +849,36 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
     lon = lon.filled()
     data = data.filled()
 
-    LOG.debug(f"initial plotMin = {plotMin}")
-    LOG.debug(f"initial plotMax = {plotMax}")
-    LOG.debug(f"np.nanmin(data) = {np.nanmin(data)}")
-    LOG.debug(f"np.nanmax(data) = {np.nanmax(data)}")
+    LOG.debug(f"args min = {plotMin}")
+    LOG.debug(f"args max = {plotMax}")
+    LOG.debug(f"datatype min = {dataset_min}")
+    LOG.debug(f"datatype max = {dataset_max}")
+    LOG.debug(f"data min = {np.nanmin(data)}")
+    LOG.debug(f"data max = {np.nanmax(data)}")
 
-    if plotMin is not None:
-        plotMin = np.nanmin(data) if (np.nanmin(data)>plotMin) else plotMin
-    if plotMax is not None:
-        plotMax = np.nanmax(data) if (np.nanmax(data)<plotMax) else plotMax
+    if plotMin is None:
+        plotMin = np.nanmin(data) if (np.nanmin(data)>dataset_min) else dataset_min
+    if plotMax is None:
+        plotMax = np.nanmax(data) if (np.nanmax(data)<dataset_max) else dataset_max
 
     LOG.debug("final plotMin = {}".format(plotMin))
     LOG.debug("final plotMax = {}".format(plotMax))
 
-    LOG.info("cmap = {}".format(cmap.name))
+    LOG.debug("cmap.name = {}".format(cmap.name))
+    LOG.debug("cmap.N = {}".format(cmap.N))
+
+    norm = Normalize(vmin=plotMin, vmax=plotMax)
+    # norm = BoundaryNorm(np.linspace(plotMin, plotMax, 256), cmap.N)
 
     if doScatterPlot:
         cs = ax.scatter(lon, lat, s=pointSize, c=data,
                 transform=ccrs.PlateCarree(),
-                vmin=plotMin,vmax=plotMax,
+                norm=norm,
                 cmap=cmap, zorder=2)
     else:
         cs = ax.pcolor(lon, lat, data,
                 transform=ccrs.PlateCarree(),
-                vmin=plotMin,vmax=plotMax,
+                norm=norm,
                 cmap=cmap, zorder=2)
 
     ax.coastlines(resolution=coast_res, linewidth=0.5, edgecolor='0.2', zorder=3)
@@ -879,8 +887,8 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
 
     ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False, zorder=3)
 
-    ppl.setp(ax.get_xticklines(),visible=False)
-    ppl.setp(ax.get_yticklines(),visible=False)
+    ppl.setp(ax.get_xticklines(), visible=False)
+    ppl.setp(ax.get_yticklines(), visible=False)
     ppl.setp(ax.get_xticklabels(), visible=False)
     ppl.setp(ax.get_yticklabels(), visible=False)
 
@@ -898,7 +906,7 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
     txt = ax.set_title(title,fontsize=11)
 
     # cax_rect = [0.05 , 0.05, 0.90 , 0.05 ] # [left,bottom,width,height]
-    LOG.info(f'cbar_axis = {cbar_axis}')
+    LOG.debug(f'cbar_axis = {cbar_axis}')
     # cax = fig.add_axes(cax_rect, frameon=False) # setup colorbar axes
     cax = fig.add_axes(cbar_axis, frameon=False) # setup colorbar axes
     cb = fig.colorbar(cs, cax=cax, orientation='horizontal')
@@ -2193,8 +2201,10 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
 
     plot_style_options = {}
     plot_style_options['stride'] = options.stride
-    plot_style_options['plotMin'] = dataset_options['values'][0] if options.plotMin is None else options.plotMin
-    plot_style_options['plotMax'] = dataset_options['values'][-1] if options.plotMax is None else options.plotMax
+    plot_style_options['dataset_min'] = dataset_options['values'][0]
+    plot_style_options['dataset_max'] = dataset_options['values'][-1]
+    plot_style_options['plotMin'] = options.plotMin
+    plot_style_options['plotMax'] = options.plotMax
     plot_style_options['map_res'] = options.map_res
     plot_style_options['map_axis'] = options.map_axis
     plot_style_options['cbar_axis'] = options.cbar_axis
@@ -2232,7 +2242,7 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
     else:
         plot_style_options['title'] = options.plot_title
 
-    LOG.info("plot_style_options['title'] = {}".format(plot_style_options['title']))
+    LOG.debug("plot_style_options['title'] = {}".format(plot_style_options['title']))
 
     # Set the colorbar label
     if 'units' in dfile_obj.datasets['file_attrs'][filenames[0]].keys():
@@ -2260,36 +2270,40 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
             plot_style_options['cmap'] = getattr(cm,'cubehelix_r')
 
     # Determine whether to plot on a log scale
-    if 'logscale' in dataset_options.keys():
-        if options.logscale and options.no_logscale:
-            LOG.warning("Only one of the options --logscale and --no_logscale can be used, defaulting to linear scale.")
-            plot_style_options['log_plot'] = False
-        elif options.logscale:
-            plot_style_options['log_plot'] = True
-        elif options.no_logscale:
-            plot_style_options['log_plot'] = False
-        else:
-            plot_style_options['log_plot'] = dataset_options['logscale']
+    # if 'logscale' in dataset_options.keys():
+        # if options.logscale and options.no_logscale:
+            # LOG.warning("Only one of the options --logscale and --no_logscale can be used, defaulting to linear scale.")
+            # plot_style_options['log_plot'] = False
+        # elif options.logscale:
+            # plot_style_options['log_plot'] = True
+        # elif options.no_logscale:
+            # plot_style_options['log_plot'] = False
+        # else:
+            # plot_style_options['log_plot'] = dataset_options['logscale']
 
-        if plot_style_options['log_plot']:
-            if plot_style_options['plotMin'] <= 0.:
-                plot_style_options['plotMin'] = 0.1
-            if plot_style_options['plotMax'] <= 0.:
-                plot_style_options['plotMax'] = 1.0
+        # if plot_style_options['log_plot']:
+            # LOG.info(f"We're doing a LOG plot!")
+            # LOG.info(f"Initial plotMin,plotMax = {plot_style_options['plotMin']},{plot_style_options['plotMax']}")
+            # if plot_style_options['plotMin'] <= 0.:
+                # plot_style_options['plotMin'] = 0.1
+            # if plot_style_options['plotMax'] <= 0.:
+                # plot_style_options['plotMax'] = 1.0
+            # LOG.info(f"Final plotMin,plotMax = {plot_style_options['plotMin']},{plot_style_options['plotMax']}")
 
-    else:
-        if options.logscale:
-            LOG.warning('The dataset {} does not support log scaling, plotting on a linear scale'
-                    .format(options.dataset))
-        plot_style_options['log_plot'] = False
+    # else:
+        # if options.logscale:
+            # LOG.warning('The dataset {} does not support log scaling, plotting on a linear scale'
+                    # .format(options.dataset))
+        # plot_style_options['log_plot'] = False
 
 
-    if plot_style_options['plotMin'] > plot_style_options['plotMax']:
-        LOG.warning('Plot limit --plotMin={} > --plotMax={}, reversing the limits'
-                .format(plot_style_options['plotMin'],plot_style_options['plotMax']))
-        plot_style_options['plotMin'],plot_style_options['plotMax'] = plot_style_options['plotMax'],plot_style_options['plotMin']
+    if (plot_style_options['plotMin'] is not None) and (plot_style_options['plotMax'] is not None):
+        if plot_style_options['plotMin'] > plot_style_options['plotMax']:
+            LOG.warning('Plot limit --plotMin={} > --plotMax={}, reversing the limits'
+                    .format(plot_style_options['plotMin'],plot_style_options['plotMax']))
+            plot_style_options['plotMin'],plot_style_options['plotMax'] = plot_style_options['plotMax'],plot_style_options['plotMin']
 
-    plot_style_options['plotLims'] = [plot_style_options['plotMin'],plot_style_options['plotMax']]
+    plot_style_options['plotLims'] = [plot_style_options['plotMin'], plot_style_options['plotMax']]
 
     # If this is a navigated plot, set which axes parallels and meridians get
     # labeled at...
@@ -2344,7 +2358,7 @@ def plot_image_continuous(data,data_mask,png_file,
     # Construct particular data mask
     particular_mask = np.zeros(data.shape,dtype=np.bool)
     for ranges in dataset_options['mask_ranges']:
-        print("Mask range is {}".format(ranges))
+        LOG.debug("Mask range is {}".format(ranges))
         particular_mask += ma.masked_inside(data,ranges[0],ranges[1]).mask
 
     LOG.debug("data array has shape {}".format(data.shape))
@@ -2547,7 +2561,7 @@ def plot_map_continuous(lat,lon,data,png_file,
     # Construct particular data mask
     particular_mask = np.zeros(data.shape,dtype=np.bool)
     for ranges in dataset_options['mask_ranges']:
-        print("Mask range is {}".format(ranges))
+        LOG.debug("Mask range is {}".format(ranges))
         particular_mask += ma.masked_inside(data,ranges[0],ranges[1]).mask
 
     LOG.debug("data array has shape {}".format(data.shape))
@@ -2721,7 +2735,7 @@ def plot_image_discrete(data,data_mask,png_file,
     # Construct particular data mask
     particular_mask = np.zeros(data.shape,dtype=np.bool)
     for vals in dataset_options['mask_values']:
-        print("Mask value is {}".format(vals))
+        LOG.debug("Mask value is {}".format(vals))
         particular_mask += ma.masked_equal(data,vals).mask
 
     LOG.debug("data array has shape {}".format(data.shape))
@@ -2848,7 +2862,7 @@ def plot_map_discrete(lat,lon,data,data_mask,png_file,
     # Construct particular data mask
     particular_mask = np.zeros(data.shape,dtype=np.bool)
     for vals in dataset_options['mask_values']:
-        print("Mask value is {}".format(vals))
+        LOG.debug("Mask value is {}".format(vals))
         particular_mask += ma.masked_equal(data,vals).mask
 
     LOG.debug("data array has shape {}".format(data.shape))

@@ -47,7 +47,7 @@ class Sounder_Packages(object):
 
 
     def __init__(self, *args, **kwargs):
-        LOG.info("Inside Sounder_Packages.__init__()")
+        LOG.debug("Inside Sounder_Packages.__init__()")
         pass
 
     def get_pressure_levels(self):

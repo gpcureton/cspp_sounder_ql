@@ -254,7 +254,7 @@ class Nucaps(Sounder_Packages):
         dfile_obj = Datafile_NetCDF(file_list[0])
         data_obj = dfile_obj.Dataset(dfile_obj,dset_name['pres'])
         self.pressure = data_obj.dset[:]
-        LOG.info(f"self.pressure.shape = {self.pressure.shape}")
+        LOG.debug(f"self.pressure.shape = {self.pressure.shape}")
 
         for key in dimension_name:
             found_dim = False

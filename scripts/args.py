@@ -224,8 +224,8 @@ def argument_parser_image():
     help_strings['scatter_plot'] = "Generate the plot using a scatterplot approach."
     help_strings['global'] = "Plot the maximum extent of the desired projection, rather than just """ \
             """the extent\nof the data. [default: '{}']""".format(defaults["global"])
-    help_strings['logscale'] = """Plot the dataset using a logarithmic scale."""
-    help_strings['no_logscale'] = """Plot the dataset using a linear scale."""
+    # help_strings['logscale'] = """Plot the dataset using a logarithmic scale."""
+    # help_strings['no_logscale'] = """Plot the dataset using a linear scale."""
     help_strings['pointSize'] = """Size of the plot point used to represent each pixel. """ \
             """[default: {}]""".format(defaults["pointSize"])
     help_strings['font_scale'] = """The scale factor to apply to the default font size for the""" \
@@ -491,19 +491,19 @@ def argument_parser_image():
         'help': help_strings['global']
     }
 
-    parser_lists['logscale'] = ['--logscale']
-    parser_dicts['logscale'] = {
-        'action': "store_true",
-        'dest': "logscale",
-        'help': help_strings['logscale']
-    }
+    # parser_lists['logscale'] = ['--logscale']
+    # parser_dicts['logscale'] = {
+        # 'action': "store_true",
+        # 'dest': "logscale",
+        # 'help': help_strings['logscale']
+    # }
 
-    parser_lists['no_logscale'] = ['--no-logscale']
-    parser_dicts['no_logscale'] = {
-        'action': "store_true",
-        'dest': "no_logscale",
-        'help': help_strings['no_logscale'] if is_expert else argparse.SUPPRESS
-    }
+    # parser_lists['no_logscale'] = ['--no-logscale']
+    # parser_dicts['no_logscale'] = {
+        # 'action': "store_true",
+        # 'dest': "no_logscale",
+        # 'help': help_strings['no_logscale'] if is_expert else argparse.SUPPRESS
+    # }
 
     parser_lists['pointSize'] = ['-P','--pointSize']
     parser_dicts['pointSize'] = {
