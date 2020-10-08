@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python
 # encoding: utf-8
 """
@@ -762,6 +761,10 @@ class Nucaps(Sounder_Packages):
                         data_mask = np.zeros(data.shape,dtype='bool')
                     this_granule_mask[dset] = data_mask
 
+                    # Convert water vapor from g/g to g/kg
+                    if dset=='wvap':
+                        this_granule_data[dset] *= 1000.
+
                     try :
                         self.datasets[dset]['data'] = \
                                 np.vstack((self.datasets[dset]['data'],this_granule_data[dset]))
@@ -778,7 +781,6 @@ class Nucaps(Sounder_Packages):
 
                         self.datasets[dset]['data'] = this_granule_data[dset]
                         self.datasets[dset]['data_mask'] = this_granule_mask[dset]
-
 
                     LOG.info("\t\tIntermediate {} shape = {}".format(
                         dset,self.datasets[dset]['data'].shape))
@@ -1030,6 +1032,42 @@ class Nucaps(Sounder_Packages):
         '''
         LOG.info("\t\tComputing {}".format(data_name))
         dset = 2. * self.datasets['temp']['data'] + 0.01*self.pres_0
+
+        self.datasets[data_name]['attrs'] =  self.datasets['temp']['attrs']
+
+        return dset
+
+    def wvap_g_per_kg(self,dfile_obj,data_name,level,row,col,this_granule_data,this_granule_mask):
+        '''
+        Converts water vapor from g/g to g/kg
+        '''
+        LOG.info("\t\tComputing {}".format(data_name))
+
+        # The dataset dimensions from the file dimension block.
+        nrows = self.dimensions['nrows']
+        ncols = self.dimensions['ncols']
+        nlevels = self.dimensions['nlevels']
+        LOG.info("\t\t(nrows,ncols,nlevels)  = ({}, {}, {})".format(nrows,ncols,nlevels))
+
+        LOG.info("\t\t(row,col,level)  = ({}, {}, {})".format(row,col,level))
+
+        level = slice(level) if level == None else level
+        row = slice(row) if row == None else row
+        col = slice(col) if col == None else col
+
+        LOG.info("\t\t(row,col,level) slice objects = ({}, {}, {})".format(row,col,level))
+
+        LOG.info("\t\ttemp has shape {}".format(this_granule_data['temp'].shape))
+
+        LOG.info("\t\tplot type is {}".format(self.plot_type))
+
+        wvap = this_granule_data['wvap']
+        dset = 1000. * wvap[:]
+
+        # Apply the temperature mask to the relative humidity...
+        mask = this_granule_mask['temp'] + ma.masked_less(dset, 0.).mask
+        fill_value = self.datasets['temp']['attrs']['_FillValue'] if '_FillValue' in self.datasets['temp']['attrs'].keys() else -99999
+        dset = ma.array(dset, mask=this_granule_mask['temp'], fill_value=fill_value)
 
         self.datasets[data_name]['attrs'] =  self.datasets['temp']['attrs']
 
