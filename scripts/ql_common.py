@@ -819,25 +819,6 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
 
     coast_res = {'c':'110m', 'l':'50m', 'i':'10m'}[map_res]
 
-    # land_50m = cfeature.NaturalEarthFeature(category='physical',
-                                            # name='land',
-                                            # scale='110m',
-                                            # edgecolor=None,
-                                            # facecolor='0.8')
-    # ocean_50m = cfeature.NaturalEarthFeature(category='physical',
-                                            # name='ocean',
-                                            # scale='110m',
-                                            # edgecolor=None,
-                                            # facecolor='0.6')
-    # states_provinces = cfeature.NaturalEarthFeature(
-        # category='cultural',
-        # name='admin_1_states_provinces_lines',
-        # scale=coast_res,
-        # )
-
-    ax.add_feature(cfeature.LAND.with_scale(coast_res), facecolor='0.8', edgecolor=None, zorder=1)
-    ax.add_feature(cfeature.OCEAN.with_scale(coast_res), facecolor='0.6', edgecolor=None, zorder=0)
-
     LOG.debug("data.shape = {}".format(data.shape))
     LOG.debug("data_mask.shape = {}".format(data_mask.shape))
 
@@ -881,9 +862,41 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
                 norm=norm,
                 cmap=cmap, zorder=2)
 
-    ax.coastlines(resolution=coast_res, linewidth=0.5, edgecolor='0.2', zorder=3)
-    ax.add_feature(cfeature.BORDERS.with_scale(coast_res), linewidth=0.5, edgecolor='0.2', zorder=3)
-    # ax.add_feature(states_provinces.with_scale(coast_res), linewidth=0.5, edgecolor='0.2', zorder=2)
+    # land_50m = cfeature.NaturalEarthFeature(category='physical',
+                                            # name='land',
+                                            # scale='110m',
+                                            # edgecolor=None,
+                                            # facecolor='0.8')
+    # ocean_50m = cfeature.NaturalEarthFeature(category='physical',
+                                            # name='ocean',
+                                            # scale='110m',
+                                            # edgecolor=None,
+                                            # facecolor='0.6')
+    # states_provinces = cfeature.NaturalEarthFeature(
+        # category='cultural',
+        # name='admin_2_states_provinces_lines',
+        # scale=coast_res,
+        # )
+
+    ax.add_feature(cfeature.OCEAN.with_scale(coast_res), facecolor='0.6', edgecolor='none', zorder=0)
+    ax.add_feature(cfeature.LAND.with_scale(coast_res), facecolor='0.8', edgecolor='none', zorder=1)
+
+    ax.coastlines(resolution=coast_res, linewidth=0.2, edgecolor='k', zorder=2)
+    ax.add_feature(cfeature.LAKES.with_scale(coast_res), facecolor='0.6', edgecolor='none', zorder=1)
+    ax.add_feature(cfeature.LAKES.with_scale(coast_res), linewidth=0.2, facecolor='none', edgecolor='k', zorder=2)
+
+    # ax.add_feature(cfeature.BORDERS.with_scale(coast_res), linewidth=0.2, edgecolor='k', zorder=3)
+    # ax.add_feature(cfeature.STATES.with_scale(coast_res), linewidth=0.2, facecolor='none', edgecolor='k', zorder=2)
+    # ax.add_feature(states_provinces,  linewidth=0.2, facecolor='none', edgecolor='k', zorder=2)
+
+    # import cartopy.io.shapereader as shpreader
+    # shapename = 'admin_1_states_provinces_lakes_shp'
+    # states_shp = shpreader.natural_earth(resolution=coast_res,
+                                         # category='cultural', name=shapename)
+    # ax.add_geometries(
+        # shpreader.Reader(states_shp).geometries(),
+        # ccrs.PlateCarree(), linewidth=0.2, facecolor='none', edgecolor='k', zorder=2
+        # )
 
     ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False, zorder=3)
 
