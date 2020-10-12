@@ -728,6 +728,10 @@ class Heap(Sounder_Packages):
                         data_mask = np.zeros(data.shape,dtype='bool')
                     this_granule_mask[dset] = data_mask
 
+                    # Convert water vapor from g/g to g/kg
+                    if dset=='wvap':
+                        this_granule_data[dset] *= 1000.
+
                     try :
                         self.datasets[dset]['data'] = \
                                 np.vstack((self.datasets[dset]['data'],this_granule_data[dset]))
