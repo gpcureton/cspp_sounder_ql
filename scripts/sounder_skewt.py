@@ -1088,8 +1088,6 @@ def heap_sounder(heap_file_list,lat_0=None,lon_0=None):
 
 def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options):
 
-    LOG.debug(f"Metpy version = {metpy.__version__}")
-
     # Determine the row and column from the input lat and lon and the
     # supplied geolocation
 
@@ -1178,7 +1176,7 @@ def _argparse():
     description = '''Create a Skew-T plot from input sounder data.'''
 
     usage = "usage: %prog [mandatory args] [options]"
-    version = "v2.0"
+    cspp_sounder_ql_version = 'cspp-sounder-ql-2.0'
 
     # parser = argparse.ArgumentParser(
                                      # #version=version,
@@ -1193,13 +1191,6 @@ def _argparse():
                                      )
 
     # Mandatory/positional arguments
-
-    parser.add_argument(
-                      action='store',
-                      dest='input_file',
-                      type=str,
-                      help='''The fully qualified path to a single input file.'''
-                      )
 
     parser.add_argument(
                       action="store",
@@ -1217,9 +1208,16 @@ def _argparse():
                            # '''.format(dataChoices.__str__()[1:-1])
                       )
 
+    parser.add_argument(
+                      action='store',
+                      dest='input_file',
+                      type=str,
+                      help='''The fully qualified path to a single input file.'''
+                      )
+
     # Optional arguments
 
-    parser.add_argument('--temp_min',
+    parser.add_argument('--temp-min',
                       action="store",
                       dest="temp_min",
                       type=float,
@@ -1227,7 +1225,7 @@ def _argparse():
                       [default: {} deg C]'''.format(defaults["temp_min"])
                       )
 
-    parser.add_argument('--temp_max',
+    parser.add_argument('--temp-max',
                       action="store",
                       dest="temp_max",
                       type=float,
@@ -1245,21 +1243,21 @@ def _argparse():
                       [default: {}]'''.format(defaults["dpi"])
                       )
 
-    parser.add_argument('--lat_0',
+    parser.add_argument('--lat-0',
                       action="store",
                       dest="lat_0",
                       type=float,
                       help="Plot the sounder footprint closest to lat_0."
                       )
 
-    parser.add_argument('--lon_0',
+    parser.add_argument('--lon-0',
                       action="store",
                       dest="lon_0",
                       type=float,
                       help="Plot the sounder footprint closest to lon_0."
                       )
 
-    parser.add_argument('-o','--output_file',
+    parser.add_argument('-o','--output-file',
                       action="store",
                       dest="output_file",
                       default=defaults["output_file"],
