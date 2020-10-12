@@ -44,7 +44,7 @@ def argument_parser_common():
     flags['is_expert'] = is_expert
 
     cspp_sounder_ql_version = 'cspp-sounder-ql-2.0'
-    
+
     # Set the common help strings.
     help_strings = {}
     help_strings['work_dir'] = """Work directory which all activity will occur in, defaults to""" \
@@ -201,10 +201,6 @@ def argument_parser_image():
             """[default: {}]""".format(defaults["dpi"])
     help_strings['lat_0'] = "Center latitude of plot projection."
     help_strings['lon_0'] = "Center longitude of plot projection."
-    # help_strings['latMin'] = "Minimum latitude to plot."
-    # help_strings['latMax'] = "Maximum latitude to plot."
-    # help_strings['lonMin'] = "Minimum longitude to plot."
-    # help_strings['lonMax'] = "Maximum longitude to plot."
     # help_strings['yMin'] = "Minimum y-axis limit on slice plots."
     # help_strings['yMax'] = "Maximum y-axis limit on slice plots."
     # help_strings['footprint'] = """The cross-track footprint to use when plotting a profile slice."""
@@ -324,7 +320,7 @@ def argument_parser_image():
         # 'help': help_strings['elevation'] if is_expert else argparse.SUPPRESS
     # }
 
-    parser_lists['plotMin'] = ['--plotMin']
+    parser_lists['plotMin'] = ['--plot-min']
     parser_dicts['plotMin'] = {
         'action': "store",
         'dest': "plotMin",
@@ -333,7 +329,7 @@ def argument_parser_image():
         'help': help_strings['plotMin'] if is_expert else argparse.SUPPRESS
     }
 
-    parser_lists['plotMax'] = ['--plotMax']
+    parser_lists['plotMax'] = ['--plot-max']
     parser_dicts['plotMax'] = {
         'action': "store",
         'dest': "plotMax",
@@ -366,38 +362,6 @@ def argument_parser_image():
         'type': float,
         'help': help_strings['lon_0'] if is_expert else argparse.SUPPRESS
     }
-
-    # parser_lists['latMin'] = ['--latMin']
-    # parser_dicts['latMin'] = {
-        # 'action': "store",
-        # 'dest': "latMin",
-        # 'type': float,
-        # 'help': help_strings['latMin'] if is_expert else argparse.SUPPRESS
-    # }
-
-    # parser_lists['latMax'] = ['--latMax']
-    # parser_dicts['latMax'] = {
-        # 'action': "store",
-        # 'dest': "latMax",
-        # 'type': float,
-        # 'help': help_strings['latMax'] if is_expert else argparse.SUPPRESS
-    # }
-
-    # parser_lists['lonMin'] = ['--lonMin']
-    # parser_dicts['lonMin'] = {
-        # 'action': "store",
-        # 'dest': "lonMin",
-        # 'type': float,
-        # 'help': help_strings['lonMin'] if is_expert else argparse.SUPPRESS
-    # }
-
-    # parser_lists['lonMax'] = ['--lonMax']
-    # parser_dicts['lonMax'] = {
-        # 'action': "store",
-        # 'dest': "lonMax",
-        # 'type': float,
-        # 'help': help_strings['lonMax'] if is_expert else argparse.SUPPRESS
-    # }
 
     # parser_lists['yMin'] = ['--yMin']
     # parser_dicts['yMin'] = {
