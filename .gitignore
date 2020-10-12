@@ -83,5 +83,6 @@ Thumbs.db
 Thumbs.db
 
 # repos specific ignores
+vendor/version
 vendor/env*
 vendor/ShellB3
