@@ -118,11 +118,11 @@ def argument_parser_image():
     common_parser_lists, common_parser_dicts, flags = argument_parser_common()
 
     dataChoices = OrderedDict([
-            ('iapp', 'International TOVS Processing Package'),
-            ('mirs', 'Microwave Integrated Retrieval System'),
-            ('hsrtv', 'CrIS, AIRS and IASI Hyperspectral Retrieval Software'),
-            ('heap', 'Hyper-Spectral Enterprise Algorithm Package'),
-            ('nucaps', 'NOAA Unique Combined Atmospheric Processing System')
+            ('iapp', 'International TOVS Processing Package (IAPP)'),
+            ('mirs', 'Microwave Integrated Retrieval System (MiRS)'),
+            ('hsrtv', 'Hyperspectral Retrieval Software (HSRTV)'),
+            ('heap', 'Hyper-Spectral Enterprise Algorithm Package (HEAP NUCAPS)'),
+            ('nucaps', 'NOAA Unique Combined Atmospheric Processing System (NUCAPS)')
             ])
     prodChoices=['temp', 'wvap', 'dwpt','relh']
     # prodChoices=['temp','temp_gdas','wvap','wvap_gdas','dwpt','relh','relh_gdas']
@@ -183,7 +183,7 @@ def argument_parser_image():
     help_strings['work_dir'] = """The work directory."""
     help_strings['datatype'] = """The type of the input sounder data file. Possible values """ \
             """are:\n {}""".format(
-            "".join(["\t'{0:8s} ({1}),\n".format(tups[0]+"'",tups[1]) for
+                    "".join(["\t'{0:8s}: {1},\n".format(tups[0]+"'",tups[1]) for
                 tups in zip(dataChoices.keys(),dataChoices.values())]))
     help_strings['dataset'] = """The sounder dataset to plot. Possible values are...\n""" \
             """{},\n{}. [default: {}]""".format(prodChoices[:6].__str__()[1:-1],
@@ -561,8 +561,8 @@ def argument_parser_image():
 
     # Initialise the parser.
     desc = '''Create a plot of temperature, dewpoint or something else at a particular ''' \
-            '''pressure level.\nSupports IAPP, MIRS, HSRTV, HEAP and NUCAPS files.'''
-            # '''pressure or elevation level.\nSupports IAPP, MIRS, HSRTV, HEAP and NUCAPS files.'''
+            '''pressure level.\nSupports IAPP, MiRS, HSRTV, NUCAPS and HEAP NUCAPS files.'''
+            # '''pressure or elevation level.\nSupports IAPP, MiRS, HSRTV, HEAP and NUCAPS files.'''
     epilog = ''
     parser = argparse.ArgumentParser(description=desc,
                                      formatter_class=argparse.RawTextHelpFormatter,

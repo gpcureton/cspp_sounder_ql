@@ -7,10 +7,10 @@ Purpose: Create a Skew-T plot from a range of input data. Supports outputs from
          the following packages...
 
          * International ATOVS Processing Package (IAPP)
-         * Microwave Integrated Retrieval System (MIRS)
+         * Microwave Integrated Retrieval System (MiRS)
          * CSPP Hyperspectral Retrieval (HSRTV) Package
          * NOAA Unique CrIS/ATMS Product System (NUCAPS)
-         * Hyper-Spectral Enterprise Algorithm Package (HEAP)
+         * Hyper-Spectral Enterprise Algorithm Package (HEAP NUCAPS)
 
 Preconditions:
     * matplotlib (with basemap)
@@ -1133,6 +1133,13 @@ def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options)
     skew.plot_mixing_lines()
     skew.ax.set_ylim(1000, 100)
 
+    skew.ax.text(1.05, -0.1, f"data source: {plot_options['pkg_name']}",
+        horizontalalignment='right',
+        verticalalignment='center',
+        fontsize=10, color='grey',
+        fontstyle='italic',
+        transform=skew.ax.transAxes)
+
     # ax.set_xlabel(plot_options['taxis_label'],fontsize=10)
     # ax.set_ylabel(plot_options['paxis_label'],fontsize=10)
     # ax.set_title(plot_options['title'],fontsize=10)
@@ -1154,11 +1161,11 @@ def _argparse():
 
     # dataChoices=['iapp','mirs','hsrtv','nucaps', 'heap']
     dataChoices = OrderedDict([
-            ('iapp', 'International TOVS Processing Package'),
-            ('mirs', 'Microwave Integrated Retrieval System'),
-            ('hsrtv', 'CrIS, AIRS and IASI Hyperspectral Retrieval Software'),
-            ('heap', 'Hyper-Spectral Enterprise Algorithm Package'),
-            ('nucaps', 'NOAA Unique Combined Atmospheric Processing System')
+            ('iapp', 'International TOVS Processing Package (IAPP)'),
+            ('mirs', 'Microwave Integrated Retrieval System (MiRS)'),
+            ('hsrtv', 'Hyperspectral Retrieval Software (HSRTV)'),
+            ('heap', 'Hyper-Spectral Enterprise Algorithm Package (HEAP NUCAPS)'),
+            ('nucaps', 'NOAA Unique Combined Atmospheric Processing System (NUCAPS)')
             ])
 
     defaults = {
@@ -1200,7 +1207,7 @@ def _argparse():
                       choices=dataChoices,
                       help="""The type of the input sounder data file. Possible values """ \
             """are:\n {}""".format(
-            "".join(["\t'{0:8s} ({1}),\n".format(tups[0]+"'",tups[1]) for
+                "".join(["\t'{0:8s}: {1},\n".format(tups[0]+"'",tups[1]) for
                 tups in zip(dataChoices.keys(),dataChoices.values())]))
                       # help='''The type of the input sounder data file.\n\n
                               # Possible values are...
@@ -1329,10 +1336,18 @@ def main():
 
     LOG.info("input file(s): {}".format(input_file_list))
 
-    # Read in the input file, and return a doctionary containing the required
+    # Read in the input file, and return a dictionary containing the required
     # data
 
     dataChoices=['iapp','mirs','hsrtv','nucaps', 'heap']
+
+    pkg_names = {
+            'iapp': 'International TOVS Processing Package (IAPP)',
+            'mirs': 'Microwave Integrated Retrieval System (MiRS)',
+            'hsrtv': 'Hyperspectral Retrieval Software (HSRTV)',
+            'heap': 'Hyper-Spectral Enterprise Algorithm Package (HEAP NUCAPS)',
+            'nucaps': 'NOAA Unique Combined Atmospheric Processing System (NUCAPS)'
+            }
 
     if datatype == 'iapp' :
         sounding_inputs = iapp_sounder(input_file_list,lat_0=lat_0,lon_0=lon_0)
@@ -1369,6 +1384,7 @@ def main():
     plot_options = {}
 
     # Default plot labels
+    plot_options['pkg_name'] = pkg_names[datatype]
     plot_options['title'] = "{}\n{:4.2f}$^{{\circ}}$N, {:4.2f}$^{{\circ}}$W".\
             format(input_file,lat,lon)
     plot_options['paxis_label'] = 'Pressure (mbar)'

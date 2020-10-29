@@ -50,10 +50,6 @@ from .sounder_packages import Sounder_Packages
 LOG = logging.getLogger(__file__)
 
 # Dimension names
-dimension_name_0 = {}
-dimension_name_0['nrows'] = 'Along_Track_Y'
-dimension_name_0['ncols'] = 'Across_Track_X'
-dimension_name_0['nlevels'] = 'Number_of_Levels'
 dimension_name = {}
 dimension_name['nrows'] = ['Along_Track_Y']
 dimension_name['ncols'] = ['Across_Track_X']
@@ -193,6 +189,7 @@ class Hsrtv(Sounder_Packages):
 
         file_list, data_name, plot_type = args
 
+        self.pkg_name = "Hyperspectral Retrieval Software (HSRTV)"
         pres_0 = kwargs['pres_0']
         # elev_0 = kwargs['elev_0']
         lat_0 = kwargs['lat_0']
@@ -387,12 +384,23 @@ class Hsrtv(Sounder_Packages):
 
             # self.dsets_to_read = list(total_dsets_to_read)
 
-        # Rationalise the satellite name...
+        # Rationalise the satellite name. The keys are the file attribute values,
+        # and the dict values are what are used in the plot as the satellite name.
         satellite_names = {b'Aqua': u'Aqua',
                            b'METOP-A': u'Metop-A',
-                           b'NPP': u'NPP'}
+                           b'JPSS': u'NOAA-20',
+                           b'NPP': u'S/NPP'
+                           }
         for filename in self.datasets['file_attrs'].keys():
             satellite_name = self.datasets['file_attrs'][filename]['Mission_Name']
+            if satellite_name == b'NPP' or satellite_name == b'JPSS':
+                if '_npp_' in filename:
+                    satellite_name = b'NPP'
+                elif '_j01_' in filename:
+                    satellite_name = b'JPSS'
+                else:
+                    satellite_name = b'NPP'
+
             self.datasets['file_attrs'][filename]['Satellite_Name'] = satellite_names[satellite_name]
 
         LOG.debug("\n\n>>> Final dataset manifest...\n")
@@ -778,7 +786,7 @@ class Hsrtv(Sounder_Packages):
         data_obj = dfile_obj.Dataset(dfile_obj,dset_name[data_name])
         LOG.info("\t\tdata_obj.dset.shape = {}".format(data_obj.dset.shape))
 
-        # Determine whether this is a single pressure level (i.e.: ctp) or a profile dataset, and 
+        # Determine whether this is a single pressure level (i.e.: ctp) or a profile dataset, and
         # get the correct array slice of the dataset array...
         if dset_type[data_name] == 'single':
             LOG.info("\t\tgetting a 'single' dataset...")
@@ -1031,11 +1039,15 @@ class Hsrtv(Sounder_Packages):
         '''
         Computes a datetime object based on the filename.
         This assumes a filename for HSRTV output like...
+            "AIRS_d20150923_t074122_g077.atm_prof_rtv.h5"
             "IASI_d20150331_t153700_M01.atm_prof_rtv.h5"
+            "CrIS_d20150403_t190649.atm_prof_rtv.h5"
+            "CrIS_FSR_npp_d20201023_t194239.atm_prof_rtv.h5"
         '''
         file_name = os.path.basename(file_name)
-        image_date_time = "_".join(file_name.split("_")[1:3])
-        image_date_time = image_date_time.split(".")[0]
+        image_date_time = re.search("_d(\d\d\d\d\d\d\d\d)_t(\d\d\d\d\d\d)[_.]", file_name)[0][1:-1]
+        # image_date_time = "_".join(file_name.split("_")[1:3])
+        # image_date_time = image_date_time.split(".")[0]
         dt_image_date = datetime.strptime(image_date_time,'d%Y%m%d_t%H%M%S')
         return dt_image_date
 

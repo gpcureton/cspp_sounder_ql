@@ -4,7 +4,7 @@
 heap.py
 
 Purpose: Provide read methods for various datasets associated with the
-Hyper-Spectral Enterprise Algorithm Package (HEAP).
+Hyper-Spectral Enterprise Algorithm Package (HEAP NUCAPS).
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2015-10-20.
 Copyright (c) 2015 University of Wisconsin Regents. All rights reserved.
@@ -212,6 +212,7 @@ class Heap(Sounder_Packages):
 
         file_list, data_name, plot_type = args
 
+        self.pkg_name = "Hyper-Spectral Enterprise Algorithm Package (HEAP NUCAPS)"
         pres_0 = kwargs['pres_0']
         # elev_0 = kwargs['elev_0']
         lat_0 = kwargs['lat_0']
@@ -587,7 +588,7 @@ class Heap(Sounder_Packages):
                     LOG.info("\tReading in granule {} of {}".format(grans,dset))
 
                     data = get_data(dfile_obj,dset,level,row,col,this_granule_data,this_granule_mask)
-                    
+
                     # Transpose to make the "level" dimension first, like HSRTV, for slice datasets
                     #this_granule_data[dset] = data.transpose()
                     this_granule_data[dset] = data[:]
@@ -796,14 +797,14 @@ class Heap(Sounder_Packages):
         data_obj = dfile_obj.Dataset(dfile_obj,dset_name[data_name])
         LOG.info("\t\tdata_obj.dset.shape = {}".format(data_obj.dset.shape))
 
-        # Determine whether this is a single pressure level (i.e.: ctp) or a profile dataset, and 
+        # Determine whether this is a single pressure level (i.e.: ctp) or a profile dataset, and
         # get the correct array slice of the dataset array...
         if dset_type[data_name] == 'single':
             LOG.info("\t\tgetting a 'single' dataset...")
             dset = data_obj.dset[row,col].squeeze()
         elif dset_type[data_name] == 'level':
             LOG.info("\t\tgetting a 'level' dataset...")
-            # Determine whether this is an level or slice plot, and get the correct array slice of 
+            # Determine whether this is an level or slice plot, and get the correct array slice of
             # the data cube...
             if self.plot_type == 'image':
                 LOG.info("\t\t> getting a pressure level...")
@@ -848,7 +849,7 @@ class Heap(Sounder_Packages):
         self.pressure_array = np.broadcast_to(np.broadcast_to(self.pressure,(ncols,nlevels)),(nrows,ncols,nlevels))
         LOG.info("\t\tpressure_array.shape = {}".format(self.pressure_array.shape))
 
-        # Determine whether this is an level or slice plot, and get the correct array slice of the 
+        # Determine whether this is an level or slice plot, and get the correct array slice of the
         # pressure cube...
         if self.plot_type == 'image':
             LOG.info("\t\t> getting a pressure level...")
@@ -1459,7 +1460,7 @@ def get_level_indices(data,match_val):
                     # if sounding_inputs[label] != None:
                         # LOG.info(">>> Processing {} ..."
                                 # .format(sounding_inputs[label]['dset_name']))
-                        # for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                        # for attr_name in sounding_inputs[label]['node'].ncattrs():
                             # attr = getattr(sounding_inputs[label]['node'],attr_name)
                             # LOG.debug("{} = {}".format(attr_name,attr))
                             # sounding_inputs[label][attr_name] = attr
@@ -1481,7 +1482,7 @@ def get_level_indices(data,match_val):
 
                 # if level==None:
                     # raise Exception("No suitable pressure level found, aborting...")
-                     
+
                 # LOG.debug("Retrieved level = {}".format(level))
                 # sounding_inputs['pres_0'] = pressure[level]
                 # data_labels.remove('pres')
@@ -1542,7 +1543,7 @@ def get_level_indices(data,match_val):
     # pressure_array = pressure[level] * \
             # np.ones(sounding_inputs['lat']['data'].shape,dtype='float')
     # LOG.debug("pressure_array.shape =  {}".format(pressure_array.shape))
-    
+
     # # Construct the masks of the various datasets
     # for label in ['temp','dwpt','wvap','ctp','ctt','lat','lon']:
         # if sounding_inputs[label] != None:
@@ -1558,7 +1559,7 @@ def get_level_indices(data,match_val):
                     # data_mask = np.ones(data.shape,dtype='bool')
                 # else:
                     # data_mask = data.mask
-            # else: 
+            # else:
                 # data_mask = np.zeros(data.shape,dtype='bool')
 
             # LOG.debug("There are {}/{} masked values in {}".\
@@ -1615,24 +1616,24 @@ def get_level_indices(data,match_val):
             # Longitude:units = "degrees_east" ;
 
     # float Pressure_Levels(Pres_Levels) ;
-            # Pressure_Levels:long_name = "Pressure Levels at which the retrieved 
+            # Pressure_Levels:long_name = "Pressure Levels at which the retrieved
                                          # values are calculated" ;
             # Pressure_Levels:units = "hPa" ;
 
     # float Temperature_Retrieval(Along_Track, Across_Track, Pres_Levels) ;
-            # Temperature_Retrieval:long_name = "Temperature Retrieval for 
+            # Temperature_Retrieval:long_name = "Temperature Retrieval for
                                                # the IAPP" ;
             # Temperature_Retrieval:units = "degrees Kelvin" ;
 
     # float WaterVapor_Retrieval(Along_Track, Across_Track, Pres_Levels) ;
-            # WaterVapor_Retrieval:long_name = "Water Vapor Retrieval for 
+            # WaterVapor_Retrieval:long_name = "Water Vapor Retrieval for
                                              # the IAPP" ;
             # WaterVapor_Retrieval:units = "g/kg" ;
 
     # float Dew_Point_Temp_Retrieval(Along_Track, Across_Track, Pres_Levels) ;
-            # Dew_Point_Temp_Retrieval:long_name = "Dew Point Temperature Retrieval 
+            # Dew_Point_Temp_Retrieval:long_name = "Dew Point Temperature Retrieval
                                                   # for the IAPP" ;
-            # Dew_Point_Temp_Retrieval:units = "degrees Kelvin" ;                
+            # Dew_Point_Temp_Retrieval:units = "degrees Kelvin" ;
     # '''
 
     # data_labels = [
@@ -1679,7 +1680,7 @@ def get_level_indices(data,match_val):
         # for label in data_labels:
             # if sounding_inputs[label] != None:
                 # LOG.info(">>> Processing {} ...".format(sounding_inputs[label]['dset_name']))
-                # for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                # for attr_name in sounding_inputs[label]['node'].ncattrs():
                     # attr = getattr(sounding_inputs[label]['node'],attr_name)
                     # LOG.debug("{} = {}".format(attr_name,attr))
                     # sounding_inputs[label][attr_name] = attr
@@ -1688,7 +1689,7 @@ def get_level_indices(data,match_val):
 
         # if row==None or col==None:
             # raise Exception("No suitable lat/lon coordinates found, aborting...")
-             
+
         # LOG.debug("Retrieved row,col = {},{}".format(row,col))
         # sounding_inputs['lat_0'] = lat[row,col]
         # sounding_inputs['lon_0'] = lon[row,col]
@@ -1725,7 +1726,7 @@ def get_level_indices(data,match_val):
                     # data_mask = np.ones(data.shape,dtype='bool')
                 # else:
                     # data_mask = data.mask
-            # else: 
+            # else:
                 # data_mask = np.zeros(data.shape,dtype='bool')
 
             # LOG.debug("There are {}/{} masked values in {}".\

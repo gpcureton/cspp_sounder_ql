@@ -8,10 +8,10 @@ Purpose: Create a plot of temperature, dewpoint or relative humidity,
          packages...
 
          * International ATOVS Processing Package (IAPP)
-         * Microwave Integrated Retrieval System (MIRS)
+         * Microwave Integrated Retrieval System (MiRS)
          * CSPP Hyperspectral Retrieval (HSRTV) Package
          * NOAA Unique CrIS/ATMS Product System (NUCAPS)
-         * Hyper-Spectral Enterprise Algorithm Package (HEAP)
+         * Hyper-Spectral Enterprise Algorithm Package (HEAP NUCAPS)
 
 
 Preconditions:
@@ -150,7 +150,7 @@ def main():
 
     # Get a reference to the desired sounder package class, and instantiate
     sounder_package_ref = sounder_packages.sounder_package_ref[datatype]
-    sounder_obj = sounder_package_ref(*sounder_args,**sounder_kwargs)
+    sounder_obj = sounder_package_ref(*sounder_args, **sounder_kwargs)
 
     LOG.debug("sounder_obj.pres_0 = {}".format(sounder_obj.pres_0))
     # LOG.debug("sounder_obj.elev_0 = {}".format(sounder_obj.elev_0))
@@ -244,6 +244,7 @@ def main():
     # plot_options['scale'] = scale
     #plot_options['map_res'] = map_res
     plot_options['proj'] = proj
+    plot_options['pkg_name'] = sounder_obj.pkg_name
     #plot_options['cmap'] = cmap
     #plot_options['scatterPlot'] = doScatterPlot
     #plot_options['pointSize'] = pointSize

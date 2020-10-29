@@ -732,6 +732,7 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
     bounding_lat  = plot_options['bounding_lat']
     extent        = plot_options['extent']
     proj          = plot_options['proj']
+    pkg_name      = plot_options['pkg_name']
 
     # Copy the plot options to local variables
     title         = plot_style_options['title']
@@ -762,8 +763,8 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
 
     # If our data is all missing, return
     if (np.sum(data_mask) == data.size):
-        LOG.warn("Entire {} dataset is missing, aborting".\
-                format(cbar_title))
+        pressure = title.split('@')[-1].split('\n')[0]
+        LOG.warn(f"Entire \"{cbar_title}\" dataset is missing for level{pressure}, aborting")
         return -1
 
     # Compute the central lat and lon if they are not specified
@@ -838,9 +839,9 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
     LOG.debug(f"data max = {np.nanmax(data)}")
 
     if plotMin is None:
-        plotMin = np.nanmin(data) if (np.nanmin(data)>dataset_min) else dataset_min
+        plotMin = np.nanmin(data)# if (np.nanmin(data)>dataset_min) else dataset_min
     if plotMax is None:
-        plotMax = np.nanmax(data) if (np.nanmax(data)<dataset_max) else dataset_max
+        plotMax = np.nanmax(data)# if (np.nanmax(data)<dataset_max) else dataset_max
 
     LOG.debug("final plotMin = {}".format(plotMin))
     LOG.debug("final plotMax = {}".format(plotMax))
@@ -925,6 +926,13 @@ def plotMapDataContinuous_cartopy(lat, lon, data, data_mask, pngName,
     cb = fig.colorbar(cs, cax=cax, orientation='horizontal')
 
     txt = cax.set_title(cbar_title)
+
+    cax.text(1.05, -0.8, f"data source: {pkg_name}",
+        horizontalalignment='right',
+        verticalalignment='center',
+        fontsize=5, color='grey',
+        fontstyle='italic',
+        transform=cax.transAxes)
 
     #
     # Add a small globe with the swath indicated on it #

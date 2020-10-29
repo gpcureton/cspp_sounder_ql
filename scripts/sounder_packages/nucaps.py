@@ -3,7 +3,7 @@
 """
 NUCAPS.py
 
-Purpose: Provide read methods for various datasets associated with the 
+Purpose: Provide read methods for various datasets associated with the
 NOAA Unique CrIS/ATMS Product System (NUCAPS) Package.
 
 Created by Geoff Cureton <geoff.cureton@ssec.wisc.edu> on 2015-04-07.
@@ -204,13 +204,14 @@ class Nucaps(Sounder_Packages):
                 Cloud_Top_Pressure:valid_range = 0.f, 10000.f ;
                 Cloud_Top_Pressure:_FillValue = -9999.f ;
 
-    '''         
+    '''
 
     def __init__(self, *args, **kwargs):
         Sounder_Packages.__init__(self, *args, **kwargs)
 
         file_list, data_name, plot_type = args
 
+        self.pkg_name = "NOAA Unique Combined Atmospheric Processing System (NUCAPS)"
         pres_0 = kwargs['pres_0']
         # elev_0 = kwargs['elev_0']
         lat_0 = kwargs['lat_0']
@@ -614,7 +615,7 @@ class Nucaps(Sounder_Packages):
                     LOG.info("\tReading in granule {} of {}".format(grans,dset))
 
                     data = get_data(dfile_obj,dset,level,row,col,this_granule_data,this_granule_mask)
-                    
+
                     # Transpose to make the "level" dimension first, like HSRTV, for slice datasets
                     #this_granule_data[dset] = data.transpose()
                     this_granule_data[dset] = data[:]
@@ -836,14 +837,14 @@ class Nucaps(Sounder_Packages):
         data_obj = dfile_obj.Dataset(dfile_obj,dset_name[data_name])
         LOG.info("\t\tdata_obj.dset.shape = {}".format(data_obj.dset.shape))
 
-        # Determine whether this is a single pressure level (i.e.: ctp) or a profile dataset, and 
+        # Determine whether this is a single pressure level (i.e.: ctp) or a profile dataset, and
         # get the correct array slice of the dataset array...
         if dset_type[data_name] == 'single':
             LOG.info("\t\tgetting a 'single' dataset...")
             dset = data_obj.dset[:].reshape(nrows, ncols)[row,col].squeeze()
         elif dset_type[data_name] == 'level':
             LOG.info("\t\tgetting a 'level' dataset...")
-            # Determine whether this is an level or slice plot, and get the correct array slice of 
+            # Determine whether this is an level or slice plot, and get the correct array slice of
             # the data cube...
             if self.plot_type == 'image':
                 LOG.info("\t\t> getting a pressure level...")
@@ -884,7 +885,7 @@ class Nucaps(Sounder_Packages):
 
         LOG.info("\t\tplot type is {}".format(self.plot_type))
 
-        # Determine whether this is an level or slice plot, and get the correct array slice of the 
+        # Determine whether this is an level or slice plot, and get the correct array slice of the
         # pressure cube...
         if self.plot_type == 'image':
             LOG.info("\t\t> getting a pressure level...")
@@ -1539,7 +1540,7 @@ def get_level_indices(data,match_val):
                     # if sounding_inputs[label] != None:
                         # LOG.info(">>> Processing {} ..."
                                 # .format(sounding_inputs[label]['dset_name']))
-                        # for attr_name in sounding_inputs[label]['node'].ncattrs(): 
+                        # for attr_name in sounding_inputs[label]['node'].ncattrs():
                             # attr = getattr(sounding_inputs[label]['node'],attr_name)
                             # LOG.debug("{} = {}".format(attr_name,attr))
                             # sounding_inputs[label][attr_name] = attr
@@ -1562,7 +1563,7 @@ def get_level_indices(data,match_val):
 
                 # if level==None:
                     # raise Exception("No suitable pressure level found, aborting...")
-                 
+
                 # LOG.debug("Retrieved level = {}".format(level))
                 # sounding_inputs['pres_0'] = pressure[level]
                 # data_labels.remove('pres')
@@ -1630,7 +1631,7 @@ def get_level_indices(data,match_val):
                     # data_mask = np.ones(data.shape,dtype='bool')
                 # else:
                     # data_mask = data.mask
-            # else: 
+            # else:
                 # data_mask = np.zeros(data.shape,dtype='bool')
 
             # LOG.debug("There are {}/{} masked values in {}".\
