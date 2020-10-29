@@ -1104,7 +1104,7 @@ def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options)
     td = dewpoint
     fig = optional matplotlib figure
     '''
-    fig = ppl.figure(figsize=(15, 15))
+    fig = ppl.figure(figsize=(8, 8))
     skew = SkewT(fig, rotation=45)
 
     # Plot the data using normal plotting functions, in this case using
@@ -1121,7 +1121,7 @@ def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options)
 
     skew.ax.set_xlabel(plot_options['taxis_label'],fontsize=12)
     skew.ax.set_ylabel(plot_options['paxis_label'],fontsize=12)
-    skew.ax.set_title(plot_options['title'],fontsize=12)
+    skew.ax.set_title(plot_options['title'], family='monospace', fontsize=12)
 
     # Add the relevant special lines
     # skew.plot_dry_adiabats(color='brown', linestyle='-', linewidth=0.8)
@@ -1133,10 +1133,10 @@ def plot_dict(sounding_inputs,png_name='skewT_plot.png',dpi=200, **plot_options)
     skew.plot_mixing_lines()
     skew.ax.set_ylim(1000, 100)
 
-    skew.ax.text(1.05, -0.1, f"data source: {plot_options['pkg_name']}",
+    skew.ax.text(1.05, -0.125, f"data source: {plot_options['pkg_name']}",
         horizontalalignment='right',
         verticalalignment='center',
-        fontsize=10, color='grey',
+        fontsize=8, color='grey',
         fontstyle='italic',
         transform=skew.ax.transAxes)
 

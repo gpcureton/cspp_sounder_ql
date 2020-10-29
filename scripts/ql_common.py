@@ -2254,8 +2254,9 @@ def set_plot_styles(dfile_obj, dset, dataset_options, options):
         # elif options.plot_type == 'slice':
             # vert_lev_str = "(footprint {})".format(options.footprint)
 
-        plot_style_options['title'] = "{} , {} {}\n{}Z".format(
+        plot_style_options['title'] = "{}, {} {} {}\n{}Z".format(
                 dfile_obj.datasets['file_attrs'][filenames[0]]['Satellite_Name'],
+                re.search('\(([^)]+)', dfile_obj.pkg_name).group(1),
                 dataset_options['name'],
                 vert_lev_str,
                 dt_image_date.strftime('%Y-%m-%d %H:%M')
