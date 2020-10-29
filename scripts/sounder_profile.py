@@ -3,9 +3,9 @@
 """
 sounder_profile.py
 
-Purpose: Create a profile plot from a range of input data. Supports outputs from 
+Purpose: Create a profile plot from a range of input data. Supports outputs from
          the following packages...
-         
+
          * International ATOVS Processing Package (IAPP)
          * Microwave Integrated Retrieval System (MIRS)
          * CSPP Hyperspectral Retrieval (Dual Regression) Package
@@ -17,7 +17,7 @@ Preconditions:
     * h5py python module
 
 Optional:
-    * 
+    *
 
 Minimum commandline:
 
@@ -25,7 +25,7 @@ Minimum commandline:
 
 where...
 
-    INPUTFILES: The fully qualified path to the input files. May be a 
+    INPUTFILES: The fully qualified path to the input files. May be a
     directory or a file glob.
 
     DATATYPE: One of 'IAPP','MIRS', 'DR' or 'NUCAPS'.
@@ -150,7 +150,7 @@ def uwyoming():
 def get_geo_indices(lat,lon,lat_0=None,lon_0=None):
     '''
     Get the indices in the lat and lon arrays closes to the desired
-    latitude and longitude. If no lat and lon are specified, try to select 
+    latitude and longitude. If no lat and lon are specified, try to select
     the central indices. Uses kd-tree.
     '''
 

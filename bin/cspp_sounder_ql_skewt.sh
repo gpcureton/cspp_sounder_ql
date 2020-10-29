@@ -1,6 +1,6 @@
 #!/bin/bash
 # Bash front-end script for CSPP SounderQL python scripting
-# sounder_skewt.py, which generates which generates 
+# sounder_skewt.py, which generates which generates
 # skew-T plots from various sensor products.
 
 # Copyright 2014-2018, University of Wisconsin Regents.

@@ -22,26 +22,16 @@ Copyright (c) 2009-2015 University of Wisconsin Regents. All rights reserved.
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-file_Date = '$Date$'
-file_Revision = '$Revision$'
-file_Author = '$Author$'
-file_HeadURL = '$HeadURL$'
-file_Id = '$Id$'
-
-__author__ = 'G.P. Cureton <geoff.cureton@ssec.wisc.edu>'
-__version__ = '$Id$'
-__docformat__ = 'Epytext'
-
 from scipy import log10
-from numpy import pi,cos,sin,arctan2,sqrt,exp,log
-from numpy import min,max,minimum,maximum,where,interp,linspace
+from numpy import exp, log
+from numpy import min, minimum, where
 
-#-----------------------------------------------------------------------
-# Here we go. A set of functions that I use from time to time to calculate 
-# the basic stuff that I'm sick of doing over and over! I'm going to 
-# endeavour to include references and global constants to make it all nice 
+# -----------------------------------------------------------------------
+# Here we go. A set of functions that I use from time to time to calculate
+# the basic stuff that I'm sick of doing over and over! I'm going to
+# endeavour to include references and global constants to make it all nice
 # and legible.
-#-----------------------------------------------------------------------
+# -----------------------------------------------------------------------
 
 Rs_da=287.05          # Specific gas const for dry air, J kg^{-1} K^{-1}
 Rs_v=461.51           # Specific gas const for water vapour, J kg^{-1} K^{-1}
@@ -54,49 +44,49 @@ Epsilon=0.622         # Epsilon=Rs_da/Rs_v; The ratio of the gas constants
 degCtoK=273.15        # Temperature offset between K and C (deg C)
 rho_w=1000.           # Liquid Water density kg m^{-3}
 grav=9.81             # Gravity, m s^{-2}
-Lv=2.5e6              # Latent Heat of vaporisation 
+Lv=2.5e6              # Latent Heat of vaporisation
 boltzmann=5.67e-8     # Stefan-Boltzmann constant
 mv=18.0153            # Mean molar mass of water vapor(g/mol)
 
 
 def rh_to_mr( rh, p, t) :
 	'''
-	Returns mixing ratio, in g/kg, given relative humidity in %, 
+	Returns mixing ratio, in g/kg, given relative humidity in %,
 	pressure in hPa and temperature in K.
 	'''
 	return rh * 0.01 * satmix(p, t)
 
 def rh_to_mr_wat( rh, p, t) :
 	'''
-	Returns mixing ratio over water, in g/kg, given relative humidity in %, 
+	Returns mixing ratio over water, in g/kg, given relative humidity in %,
 	pressure in hPa and temperature in K.
 	'''
 	return rh * 0.01 * satmixwat(p, t)
 
 def rh_to_mr_ice( rh, p, t) :
 	'''
-	Returns mixing ratio over ice, in g/kg, given relative humidity in %, 
+	Returns mixing ratio over ice, in g/kg, given relative humidity in %,
 	pressure in hPa and temperature in K.
 	'''
 	return rh * 0.01 * satmixice(p, t)
 
 def mr_to_rh( mr,  p,  t) :
 	'''
-	Returns relative humidity in %, given the mixing ratio in g/kg,  
+	Returns relative humidity in %, given the mixing ratio in g/kg,
 	pressure in hPa and temperature in K.
 	'''
 	return mr * 100. / satmix(p, t)
 
 def mr_to_rh_wat( mr,  p,  t) :
 	'''
-	Returns relative humidity in %, given the mixing ratio over water in g/kg,  
+	Returns relative humidity in %, given the mixing ratio over water in g/kg,
 	pressure in hPa and temperature in K.
 	'''
 	return mr * 100. / satmixwat(p, t)
 
 def mr_to_rh_ice( mr,  p,  t) :
 	'''
-	Returns relative humidity in %, given the mixing ratio over ice in g/kg,  
+	Returns relative humidity in %, given the mixing ratio over ice in g/kg,
 	pressure in hPa and temperature in K.
 	'''
 	return mr * 100. / satmixice(p, t)
@@ -173,7 +163,7 @@ def dewpoint_magnus(T,RH) :
     b = 17.67
     c = 243.5 # deg C
 
-    #T = T - degCtoK 
+    #T = T - degCtoK
     gamma = log(RH/100.) + (b*T)/(c+T)
 
     T_d = (c * gamma) / (b - gamma)
@@ -216,7 +206,7 @@ def dewpoint_AB(T_K,RH) :
         a = 6.1121 # millibars
         b = 17.368
         c = 238.88 # deg C
-    elif ((T > 0.) and (T <= 50.)) : 
+    elif ((T > 0.) and (T <= 50.)) :
         #print("{0:5.2f} is > 0. and {0:5.2f} is <= 50."). \
                 #format(T)
         a = 6.1121 # millibars
@@ -246,7 +236,7 @@ def dewpoint_AB(T_K,RH) :
 def Theta(tempk,pres,pref=100000.):
     """Potential Temperature
 
-    INPUTS: 
+    INPUTS:
     tempk (K)
     pres (Pa)
     pref: Reference pressure (default 100000 Pa)
@@ -286,16 +276,16 @@ def TempK(theta,pres,pref=100000.):
 def ThetaE():
     """Equivalent potential temperature"""
     raise NotImplementedError
-    
+
 
 def ThetaV(tempk,pres,e):
     """Virtual Potential Temperature
-    
+
     INPUTS
     tempk (K)
     pres (Pa)
     e: Water vapour pressure (Pa) (Optional)
-    """ 
+    """
 
     mixr=MixRatio(e,pres)
     theta=Theta(tempk,pres)
@@ -345,7 +335,7 @@ def DensityHumid(tempk,pres,e):
     pres: static pressure (Pa)
     mixr: mixing ratio (kg/kg)
 
-    OUTPUTS: 
+    OUTPUTS:
     rho_air (kg/m^3)
 
     SOURCE: http://en.wikipedia.org/wiki/Density_of_air
@@ -366,10 +356,10 @@ def Density(tempk,pres,mixr):
     pres: static pressure (Pa)
     mixr: mixing ratio (kg/kg)
 
-    OUTPUTS: 
+    OUTPUTS:
     rho_air (kg/m^3)
     """
-    
+
     virtualT=VirtualTempFromMixR(tempk,mixr)
     return pres/(Rs_da*virtualT)
 
@@ -389,7 +379,7 @@ def VirtualTemp(tempk,pres,e):
 
     tempvk=tempk/(1-(e/pres)*(1-Epsilon))
     return tempvk
-    
+
 
 def VirtualTempFromMixR(tempk,mixr):
     """Virtual Temperature
@@ -420,14 +410,14 @@ def Latentc(tempc):
     SOURCE:
     http://en.wikipedia.org/wiki/Latent_heat#Latent_heat_for_condensation_of_water
     """
-   
+
     return 1000*(2500.8 - 2.36*tempc + 0.0016*tempc**2 - 0.00006*tempc**3)
 
 
 def SatVap(tempc,phase="liquid"):
     """Calculate saturation vapour pressure over liquid water and/or ice.
 
-    INPUTS: 
+    INPUTS:
     tempc: (C)
     phase: ['liquid'],'ice'. If 'liquid', do simple dew point. If 'ice',
     return saturation vapour pressure as follows:
@@ -435,13 +425,13 @@ def SatVap(tempc,phase="liquid"):
     Tc>=0: es = es_liquid
     Tc <0: es = es_ice
 
-   
+
     RETURNS: e_sat  (Pa)
-    
+
     SOURCE: http://cires.colorado.edu/~voemel/vp.html (#2:
     CIMO guide (WMO 2008), modified to return values in Pa)
-    
-    This formulation is chosen because of its appealing simplicity, 
+
+    This formulation is chosen because of its appealing simplicity,
     but it performs very well with respect to the reference forms
     at temperatures above -40 C. At some point I'll implement Goff-Gratch
     (from the same resource).
@@ -466,7 +456,7 @@ def MixRatio(e,p):
     INPUTS
     e (Pa) Water vapor pressure
     p (Pa) Ambient pressure
-          
+
     RETURNS
     qv (kg kg^-1) Water vapor mixing ratio`
     """
@@ -479,7 +469,7 @@ def MixR2VaporPress(qv,p):
     INPUTS
     qv (kg kg^-1) Water vapor mixing ratio`
     p (Pa) Ambient pressure
-          
+
     RETURNS
     e (Pa) Water vapor pressure
     """
@@ -490,9 +480,9 @@ def MixR2VaporPress(qv,p):
 def VaporPressure(dwpt):
     """Water vapor pressure
     INPUTS
-    dwpt (C) Dew Point Temperature (for SATURATION vapor 
+    dwpt (C) Dew Point Temperature (for SATURATION vapor
 	     pressure use tempc)
-          
+
     RETURNS
     e (Pa) Water Vapor Pressure
 
@@ -508,7 +498,7 @@ def DewPoint(e):
     INPUTS:
     e (Pa) Water Vapor Pressure
     OUTPUTS:
-    Td (deg C) 
+    Td (deg C)
       """
 
     ln_ratio=log(e/611.2)
@@ -525,25 +515,25 @@ def svpwat(temp):
 
     """
     -----------------------------------------------------
-     Calculate saturation vapor pressure over water given 
+     Calculate saturation vapor pressure over water given
      a certain temperature
     -------------------------------------------------------
      input:  temperature in Kelvin or degrees Celsius
      output: saturation vapor pressure at given temp over water in  mb or hPa
     -----------------------------------------------------
      NOTE: Due to the prevalence of the super-cooling phenomenon
-     in clouds and upper atmosphere relative humidity is calculated 
-     for conditions over water irrespective of the temperature. 
+     in clouds and upper atmosphere relative humidity is calculated
+     for conditions over water irrespective of the temperature.
      This is according to WMO standards.
      Consequently, the vp threshold was lowered from 0.636d-1 to 0.1403d-4
-    
+
      REFERENCE: Hardy, Bob, "ITS-90 Formulations of ..." Papers and
      Abstracts from teh Third International Symposium on Humidity &
      Moisture, London, England, April 1998, vol. 1, 214-222.
     -------------------------------------------------------
 
     python version of Hal Woolf's fortran code 'svpwat.f'
-    
+
     """
 
     tref=273.15
@@ -574,15 +564,15 @@ def svpwat(temp):
 def tsvwat(press):
     """
     -----------------------------------------------------
-     Calculates temperature [K] at given saturation vapor pressure [hPa] 
+     Calculates temperature [K] at given saturation vapor pressure [hPa]
      zero is returned if the given vapor pressure is out of range
     -------------------------------------------------------
      input: saturation vapor pressure [hPa]
      output: temperature at which saturation vapor pressure occur over water (not ice)
     -----------------------------------------------------
      NOTE: Due to the prevalence of the super-cooling phenomenon
-     in clouds the upper atmosphere relative humidity is calculated 
-     for conditions over water irrespective of the temperature. 
+     in clouds the upper atmosphere relative humidity is calculated
+     for conditions over water irrespective of the temperature.
      This is according to WMO standards.
      Consequently, the vp threshold was lowered from 0.636d-1 to 0.1403d-4
 
@@ -590,9 +580,9 @@ def tsvwat(press):
      Abstracts from teh Third International Symposium on Humidity &
      Moisture, London, England, April 1998, vol. 1, 214-222.
     -------------------------------------------------------
-    
+
     matlab version of Hal Woolf's fortran code 'tsvwat.f'
-    
+
     ------------------------------------------------------------
     """
 
@@ -604,7 +594,7 @@ def tsvwat(press):
 
     vp=press
 
-    # original:  if (vp > 0.636d-1 & vp < 0.1233972d+3) 
+    # original:  if (vp > 0.636d-1 & vp < 0.1233972d+3)
     if (vp > 0.1403e-4 and vp < 0.1233972e+3):
         vp = log10(vp)
         t = a0 + vp*(a1+vp*(a2+vp*(a3+vp*a4)))
@@ -618,7 +608,7 @@ def tsvwat(press):
 def sat_mr_water(p,t):
     """
     * Get saturation mixing ratio over water from press, temp
-    
+
     input: pressure in mbar,hPa
     input: temperature in Kelvin, deg C
 
@@ -639,8 +629,8 @@ def dewhum(p,t,w):
     * Calculates dewpoint temperature
 
     NOTE: Due to the prevalence of the super-cooling phenomenon
-    in clouds and upper atmosphere relative humidity is calculated 
-    for conditions over water irrespective of the temperature. 
+    in clouds and upper atmosphere relative humidity is calculated
+    for conditions over water irrespective of the temperature.
     This is according to WMO standards.
 
     REFERENCE: Hardy, Bob, "ITS-90 Formulations of ..." Papers and
@@ -649,17 +639,17 @@ def dewhum(p,t,w):
 
     * Get dewpoint and relative humidity from press, temp, wvmr
     .... version of 22.04.98
-    
+
     python version of Hal Woolf's fortran code 'dewhum.f'
-    
+
     -----------------------------------------------------------
-    
+
     input: pressure in mbar,hPa
     input: temperature in Kelvin, deg C
     input: water vapor mixing ratio in g/kg
 
     returns: dewpoint temperature in Kelvin
-    returns: relative humidity 
+    returns: relative humidity
     returns: water vapour mixing ratio in g/kg
     """
 
